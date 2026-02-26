@@ -1,0 +1,123 @@
+name: "Order Flow"
+description: >
+  Exercises NewOrderSingle, OrderCancelReplaceRequest, and OrderCancelRequest.
+  Assumes the simulator has AAPL and MSFT in its instruments.yml.
+
+steps:
+
+  # ── Seed the book with resting limit sell orders ─────────────────────────
+  - type: new_order
+    clOrdId: "SELL-AAPL-01"
+    symbol: "AAPL"
+    side: SELL
+    ordType: LIMIT
+    qty: 200
+    price: 150.50
+    tif: GTC
+
+  - type: new_order
+    clOrdId: "SELL-AAPL-02"
+    symbol: "AAPL"
+    side: SELL
+    ordType: LIMIT
+    qty: 100
+    price: 151.00
+    tif: GTC
+
+  # ── Buy aggressor — partial fill expected ────────────────────────────────
+  - type: wait
+    ms: 200
+
+  - type: new_order
+    clOrdId: "BUY-AAPL-01"
+    symbol: "AAPL"
+    side: BUY
+    ordType: LIMIT
+    qty: 150
+    price: 150.50
+    tif: DAY
+
+  - type: wait_for_reports
+    count: 3          # NEW ack + partial/fill for aggressor + fill for passive
+    timeoutMs: 4000
+
+  # ── Replace the resting portion of the buy ───────────────────────────────
+  - type: wait
+    ms: 300
+
+  - type: replace
+    clOrdId: "BUY-AAPL-02"
+    origClOrdId: "BUY-AAPL-01"
+    symbol: "AAPL"
+    side: BUY
+    ordType: LIMIT
+    qty: 300
+    price: 150.75
+    tif: DAY
+
+  - type: wait_for_reports
+    count: 2          # REPLACED + NEW
+    timeoutMs: 3000
+
+  # ── Cancel the replaced order ─────────────────────────────────────────────
+  - type: wait
+    ms: 300
+
+  - type: cancel
+    clOrdId: "CXL-AAPL-01"
+    origClOrdId: "BUY-AAPL-02"
+    symbol: "AAPL"
+    side: BUY
+
+  - type: wait_for_reports
+    count: 1          # CANCELLED
+    timeoutMs: 3000
+
+  # ── IOC order — fills what it can, cancels remainder ─────────────────────
+  - type: wait
+    ms: 500
+
+  - type: new_order
+    clOrdId: "IOC-AAPL-01"
+    symbol: "AAPL"
+    side: BUY
+    ordType: LIMIT
+    qty: 500
+    price: 151.00
+    tif: IOC
+
+  - type: wait_for_reports
+    count: 2          # partial fill (or FOK cancel) + cancel
+    timeoutMs: 4000
+
+  # ── FOK market order — all or nothing ────────────────────────────────────
+  - type: wait
+    ms: 500
+
+  - type: new_order
+    clOrdId: "FOK-AAPL-01"
+    symbol: "AAPL"
+    side: BUY
+    ordType: MARKET
+    qty: 50
+    tif: FOK
+
+  - type: wait_for_reports
+    count: 1
+    timeoutMs: 4000
+
+  # ── MSFT: simple limit order resting in book ─────────────────────────────
+  - type: wait
+    ms: 200
+
+  - type: new_order
+    clOrdId: "BUY-MSFT-01"
+    symbol: "MSFT"
+    side: BUY
+    ordType: LIMIT
+    qty: 100
+    price: 299.00
+    tif: GTC
+
+  - type: wait
+    ms: 500

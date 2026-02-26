@@ -1,0 +1,139 @@
+package com.fix.testharness;
+
+import com.fix.testharness.report.ExecutionReporter;
+import com.fix.testharness.scenario.Scenario;
+import com.fix.testharness.scenario.ScenarioRunner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import quickfix.*;
+import quickfix.field.MsgType;
+
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * QuickFIX/J {@link Application} implementation for the FIX Test Harness.
+ *
+ * <p>On session logon the scenario runner is launched in a background thread.
+ * Incoming messages (ExecutionReports, QuoteAcks, CancelRejects) are
+ * pretty-printed by {@link ExecutionReporter}.
+ *
+ * <p>When the scenario finishes (or times out), {@link #awaitCompletion}
+ * returns and {@code Main} shuts the initiator down.
+ */
+public class FIXTestHarnessApp implements Application {
+
+    private static final Logger log = LoggerFactory.getLogger(FIXTestHarnessApp.class);
+
+    private final Scenario       scenario;
+    private final CountDownLatch completionLatch = new CountDownLatch(1);
+    private final AtomicInteger  reportCounter   = new AtomicInteger(0);
+
+    /** Set when onLogon fires — used to guard against duplicate logon events. */
+    private volatile boolean runnerStarted = false;
+
+    public FIXTestHarnessApp(Scenario scenario) {
+        this.scenario = scenario;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    //  QuickFIX/J Application lifecycle
+    // ──────────────────────────────────────────────────────────────────────
+
+    @Override
+    public void onCreate(SessionID sessionId) {
+        log.info("Session created: {}", sessionId);
+    }
+
+    @Override
+    public void onLogon(SessionID sessionId) {
+        log.info("Logon established: {}", sessionId);
+
+        if (runnerStarted) {
+            log.warn("Logon fired again for {} — runner already started, ignoring.", sessionId);
+            return;
+        }
+        runnerStarted = true;
+
+        ScenarioRunner runner = new ScenarioRunner(
+                scenario, sessionId, completionLatch, reportCounter);
+
+        Thread t = new Thread(runner, "scenario-runner");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    @Override
+    public void onLogout(SessionID sessionId) {
+        log.info("Logout: {}", sessionId);
+    }
+
+    @Override
+    public void toAdmin(Message message, SessionID sessionId) {
+        // Heartbeats and admin messages are handled automatically by QuickFIX/J.
+        if (log.isTraceEnabled()) {
+            try {
+                String mt = message.getHeader().getString(MsgType.FIELD);
+                if ("0".equals(mt) || "A".equals(mt)) {
+                    log.trace("OUT admin MsgType={}", mt);
+                }
+            } catch (FieldNotFound ignored) {}
+        }
+    }
+
+    @Override
+    public void fromAdmin(Message message, SessionID sessionId)
+            throws FieldNotFound, IncorrectDataFormat, IncorrectTagValue, RejectLogon {
+        // QuickFIX/J handles Heartbeat (0), TestRequest (1), Resend (2) etc.
+        if (log.isTraceEnabled()) {
+            try {
+                log.trace("IN  admin MsgType={}", message.getHeader().getString(MsgType.FIELD));
+            } catch (FieldNotFound ignored) {}
+        }
+    }
+
+    @Override
+    public void toApp(Message message, SessionID sessionId) throws DoNotSend {
+        if (log.isTraceEnabled())
+            log.trace("OUT app: {}", message);
+    }
+
+    @Override
+    public void fromApp(Message message, SessionID sessionId)
+            throws FieldNotFound, IncorrectDataFormat, IncorrectTagValue, UnsupportedMessageType {
+
+        try {
+            String msgType = message.getHeader().getString(MsgType.FIELD);
+
+            // Count execution reports for wait_for_reports steps
+            if ("8".equals(msgType)) {
+                reportCounter.incrementAndGet();
+            }
+
+            // Pretty-print to the console
+            ExecutionReporter.report(message, sessionId);
+
+        } catch (Exception e) {
+            log.error("Error processing incoming message: {}", e.getMessage(), e);
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    //  Completion
+    // ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * Block until the scenario finishes or the timeout expires.
+     *
+     * @param timeoutSeconds maximum time to wait in seconds (0 = wait forever)
+     * @return {@code true} if the scenario completed normally
+     */
+    public boolean awaitCompletion(long timeoutSeconds) throws InterruptedException {
+        if (timeoutSeconds <= 0) {
+            completionLatch.await();
+            return true;
+        }
+        return completionLatch.await(timeoutSeconds, TimeUnit.SECONDS);
+    }
+}

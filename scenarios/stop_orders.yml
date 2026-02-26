@@ -1,0 +1,86 @@
+name: "Stop and Stop-Limit Order Flow"
+description: >
+  Tests STOP (OrdType=3) and STOP LIMIT (OrdType=4) orders.
+  A fill on a regular limit order triggers each stop.
+
+steps:
+
+  # ── Seed book: resting sell at 100.00 ────────────────────────────────────
+  - type: new_order
+    clOrdId: "SEED-SELL-01"
+    symbol: "AAPL"
+    side: SELL
+    ordType: LIMIT
+    qty: 500
+    price: 100.00
+    tif: GTC
+
+  # ── Place a STOP BUY — triggers when lastTradePrice >= 100.00 ────────────
+  - type: new_order
+    clOrdId: "STOP-BUY-01"
+    symbol: "AAPL"
+    side: BUY
+    ordType: STOP
+    qty: 100
+    stopPx: 100.00
+    tif: GTC
+
+  - type: wait
+    ms: 200
+
+  # ── Place a STOP LIMIT BUY — triggers at 100.00, rests at limit 100.50 ──
+  - type: new_order
+    clOrdId: "STOP-LIM-BUY-01"
+    symbol: "AAPL"
+    side: BUY
+    ordType: STOP_LIMIT
+    qty: 50
+    price: 100.50
+    stopPx: 100.00
+    tif: GTC
+
+  - type: wait
+    ms: 200
+
+  # ── Trigger: a market BUY fills against the resting sell, setting
+  #    lastTradePrice = 100.00 and triggering the stops above ───────────────
+  - type: new_order
+    clOrdId: "TRIGGER-BUY-01"
+    symbol: "AAPL"
+    side: BUY
+    ordType: LIMIT
+    qty: 10
+    price: 100.00
+    tif: IOC
+
+  # Wait for: TRIGGER fill + STOP converted-to-market fill + STOP-LIM ack
+  - type: wait_for_reports
+    count: 4
+    timeoutMs: 6000
+
+  # ── Place a STOP SELL — triggers when lastTradePrice <= 99.00 ─────────────
+  - type: new_order
+    clOrdId: "STOP-SELL-01"
+    symbol: "AAPL"
+    side: SELL
+    ordType: STOP
+    qty: 80
+    stopPx: 99.00
+    tif: GTC
+
+  - type: wait
+    ms: 200
+
+  # ── Try to cancel the stop before it triggers ─────────────────────────────
+  - type: cancel
+    clOrdId: "CXL-STOP-SELL-01"
+    origClOrdId: "STOP-SELL-01"
+    symbol: "AAPL"
+    side: SELL
+
+  - type: wait_for_reports
+    count: 1          # CANCELLED
+    timeoutMs: 3000
+
+  - type: wait
+    ms: 500

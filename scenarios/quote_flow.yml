@@ -1,0 +1,108 @@
+name: "Quote and Market Data Flow"
+description: >
+  Exercises Quote (S) and MassQuote (i) messages, then crosses limit orders
+  against the resting quote liquidity to generate fills.
+
+steps:
+
+  # ── Single-symbol Quote: set AAPL NBBO ───────────────────────────────────
+  - type: quote
+    quoteId: "Q-AAPL-01"
+    symbol: "AAPL"
+    bidPx: 149.90
+    bidSize: 500
+    offerPx: 150.10
+    offerSize: 500
+
+  - type: wait
+    ms: 200
+
+  # ── Single-symbol Quote: update MSFT NBBO ────────────────────────────────
+  - type: quote
+    quoteId: "Q-MSFT-01"
+    symbol: "MSFT"
+    bidPx: 299.50
+    bidSize: 200
+    offerPx: 300.00
+    offerSize: 200
+
+  - type: wait
+    ms: 300
+
+  # ── MassQuote: update multiple symbols at once ────────────────────────────
+  - type: mass_quote
+    massQuoteId: "MQ-001"
+    entries:
+      - quoteEntryId: "MQ-001-E1"
+        symbol: "AAPL"
+        bidPx: 149.95
+        bidSize: 1000
+        offerPx: 150.05
+        offerSize: 1000
+      - quoteEntryId: "MQ-001-E2"
+        symbol: "MSFT"
+        bidPx: 299.75
+        bidSize: 400
+        offerPx: 300.25
+        offerSize: 400
+
+  - type: wait_for_reports
+    count: 0          # no fills expected yet — just quote inserts
+    timeoutMs: 1000
+
+  # ── Cross against ask side: BUY AAPL vs resting offer ────────────────────
+  - type: wait
+    ms: 500
+
+  - type: new_order
+    clOrdId: "BUY-AAPL-Q01"
+    symbol: "AAPL"
+    side: BUY
+    ordType: LIMIT
+    qty: 300
+    price: 150.10
+    tif: DAY
+
+  - type: wait_for_reports
+    count: 2          # NEW ack + fill (against mass-quote offer)
+    timeoutMs: 5000
+
+  # ── Cross against bid side: SELL MSFT vs resting bid ─────────────────────
+  - type: wait
+    ms: 500
+
+  - type: new_order
+    clOrdId: "SELL-MSFT-Q01"
+    symbol: "MSFT"
+    side: SELL
+    ordType: LIMIT
+    qty: 100
+    price: 299.75
+    tif: IOC
+
+  - type: wait_for_reports
+    count: 2
+    timeoutMs: 5000
+
+  # ── Refresh AAPL quotes with a new mass quote ─────────────────────────────
+  - type: wait
+    ms: 500
+
+  - type: mass_quote
+    massQuoteId: "MQ-002"
+    entries:
+      - quoteEntryId: "MQ-002-E1"
+        symbol: "AAPL"
+        bidPx: 150.00
+        bidSize: 2000
+        offerPx: 150.20
+        offerSize: 2000
+      - quoteEntryId: "MQ-002-E2"
+        symbol: "MSFT"
+        bidPx: 300.00
+        bidSize: 1000
+        offerPx: 300.50
+        offerSize: 1000
+
+  - type: wait
+    ms: 1000
