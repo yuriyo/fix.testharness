@@ -7,7 +7,7 @@ import quickfix.Session;
 import quickfix.SessionID;
 import quickfix.SessionNotFound;
 import quickfix.field.*;
-import quickfix.fix44.*;
+import quickfix.fix42.*;
 
 import java.util.List;
 import java.util.concurrent.CountDownLatch;

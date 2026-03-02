@@ -25,6 +25,7 @@ steps:
     tif: GTC
 
   # ── Buy aggressor — partial fill expected ────────────────────────────────
+  # Buy qty=250 vs SELL-AAPL-01 qty=200@150.50: fills 200, leaves 50 resting
   - type: wait
     ms: 200
 
@@ -33,12 +34,12 @@ steps:
     symbol: "AAPL"
     side: BUY
     ordType: LIMIT
-    qty: 150
+    qty: 250
     price: 150.50
     tif: DAY
 
   - type: wait_for_reports
-    count: 3          # NEW ack + partial/fill for aggressor + fill for passive
+    count: 3          # NEW ack + partial fill for aggressor + fill for passive
     timeoutMs: 4000
 
   # ── Replace the resting portion of the buy ───────────────────────────────
