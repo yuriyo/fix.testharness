@@ -118,6 +118,7 @@ public class ScenarioRunner implements Runnable {
 
         order.set(new ClOrdID(require(s.getClOrdId(),   "clOrdId")));
         order.set(new Symbol(require(s.getSymbol(),     "symbol")));
+        order.set(new HandlInst(HandlInst.AUTOMATED_EXECUTION_ORDER_PRIVATE_NO_BROKER_INTERVENTION)); // required in FIX 4.2
         order.set(new Side(parseSide(s.getSide())));
         order.set(new OrdType(parseOrdType(s.getOrdType())));
         order.set(new OrderQty(s.getQty()));
@@ -170,6 +171,7 @@ public class ScenarioRunner implements Runnable {
         replace.set(new ClOrdID(require(s.getClOrdId(),      "clOrdId")));
         replace.set(new OrigClOrdID(require(s.getOrigClOrdId(), "origClOrdId")));
         replace.set(new Symbol(require(s.getSymbol(),        "symbol")));
+        replace.set(new HandlInst(HandlInst.AUTOMATED_EXECUTION_ORDER_PRIVATE_NO_BROKER_INTERVENTION)); // required in FIX 4.2
         replace.set(new Side(parseSide(s.getSide())));
         replace.set(new OrdType(parseOrdType(s.getOrdType())));
         replace.set(new OrderQty(s.getQty()));
