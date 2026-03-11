@@ -1,5 +1,7 @@
 package com.fix.testharness.scenario;
 
+import com.fix.testharness.FIXTestHarnessApp;
+import com.fix.testharness.perf.PerfTestRunner;
 import com.fix.testharness.report.ExecutionReporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,9 +28,10 @@ public class ScenarioRunner implements Runnable {
 
     private static final Logger log = LoggerFactory.getLogger(ScenarioRunner.class);
 
-    private final Scenario     scenario;
-    private final SessionID    sessionId;
-    private final CountDownLatch completionLatch;
+    private final Scenario         scenario;
+    private final SessionID         sessionId;
+    private final CountDownLatch    completionLatch;
+    private final FIXTestHarnessApp app;
 
     /**
      * Shared counter incremented by {@link com.fix.testharness.FIXTestHarnessApp}
@@ -39,11 +42,13 @@ public class ScenarioRunner implements Runnable {
     public ScenarioRunner(Scenario scenario,
                           SessionID sessionId,
                           CountDownLatch completionLatch,
-                          AtomicInteger reportCounter) {
+                          AtomicInteger reportCounter,
+                          FIXTestHarnessApp app) {
         this.scenario        = scenario;
         this.sessionId       = sessionId;
         this.completionLatch = completionLatch;
         this.reportCounter   = reportCounter;
+        this.app             = app;
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -105,6 +110,7 @@ public class ScenarioRunner implements Runnable {
             case "mass_quote"        -> sendMassQuote(step);
             case "wait"              -> doWait(step);
             case "wait_for_reports"  -> waitForReports(step);
+            case "perf_test"         -> new PerfTestRunner(app, sessionId, step).run();
             default -> log.warn("Unknown step type '{}' — skipping", step.getType());
         }
     }

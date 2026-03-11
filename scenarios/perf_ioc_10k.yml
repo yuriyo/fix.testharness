@@ -1,0 +1,20 @@
+name: "Perf Test - IOC Flood 10K"
+description: |
+  Maximum throughput test: 10 000 IOC LIMIT orders/sec.
+  Pushes the proxy to its throughput ceiling.
+  Run on a quiet network to get clean latency numbers.
+  The inter-order interval at 10K/s is ~100 µs; LockSupport.parkNanos is
+  used for sub-millisecond pacing.
+
+steps:
+  - type: perf_test
+    mode: ioc
+    symbol: AAPL
+    side: BUY
+    qty: 100
+    price: 1.00
+    rate: 10000
+    totalOrders: 60000
+    warmupOrders: 1000
+    reportIntervalSec: 2
+    ackTimeoutMs: 120000

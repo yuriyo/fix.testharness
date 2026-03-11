@@ -1,0 +1,26 @@
+name: "Perf Test - Ladder Orders"
+description: |
+  Fills the proxy order book with GTC LIMIT BUY orders at 20
+  evenly-spaced price levels between 90.00 and 109.00.
+  Orders cycle through the levels (order 0 → level 0, order 1 → level 1, …)
+  so all levels accumulate roughly equal queue depth.
+
+  The test measures the NEW-ack latency (time for the proxy to place the order
+  in its book), and the achieved send throughput.  Because these orders rest in
+  the book they will affect subsequent functional tests — run ./play_scenario.sh
+  individually, not as part of the full suite.
+
+steps:
+  - type: perf_test
+    mode: ladder
+    symbol: AAPL
+    side: BUY
+    qty: 100
+    rate: 500
+    totalOrders: 2000
+    ladderStartPx: 90.00
+    ladderEndPx: 109.00
+    ladderLevels: 20
+    warmupOrders: 50
+    reportIntervalSec: 2
+    ackTimeoutMs: 30000

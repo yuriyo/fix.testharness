@@ -37,8 +37,11 @@ usage() {
 }
 
 list_scenarios() {
-    echo "Available scenarios:"
-    ls scenarios/*.yml 2>/dev/null | sed 's|scenarios/||; s|\.yml||' | sed 's/^/  /' || echo "  (none)"
+    echo "Functional scenarios (run by default):"
+    ls scenarios/*.yml 2>/dev/null | grep -v '/perf_' | sed 's|scenarios/||; s|\.yml||' | sed 's/^/  /' || true
+    echo ""
+    echo "Performance scenarios (run explicitly — excluded from default suite):"
+    ls scenarios/perf_*.yml 2>/dev/null | sed 's|scenarios/||; s|\.yml||' | sed 's/^/  /' || echo "  (none)"
     exit 0
 }
 
@@ -62,9 +65,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# ── Default: all scenarios ─────────────────────────────────────────────────
+# ── Default: all non-perf scenarios ────────────────────────────────────────
 if [[ ${#SCENARIOS[@]} -eq 0 ]]; then
-    while IFS= read -r f; do SCENARIOS+=("$f"); done < <(ls scenarios/*.yml 2>/dev/null | sort)
+    # perf_*.yml are excluded from the default run — run them explicitly
+    while IFS= read -r f; do
+        [[ "$(basename "$f")" == perf_* ]] && continue
+        SCENARIOS+=("$f")
+    done < <(ls scenarios/*.yml 2>/dev/null | sort)
     if [[ ${#SCENARIOS[@]} -eq 0 ]]; then
         echo "ERROR: no scenarios found in scenarios/" >&2; exit 1
     fi
@@ -103,6 +110,18 @@ for SCENARIO in "${SCENARIOS[@]}"; do
         FAILED+=("$SCENARIO")
         continue
     fi
+
+    # Performance scenarios: wipe the FIX session store first to prevent old
+    # sequence numbers from triggering a ResendRequest flood on reconnect.
+    if [[ "$(basename "$SCENARIO")" == perf_* ]]; then
+        echo "==> Perf scenario detected — wiping FIX store to reset sequence numbers..."
+        rm -f store/FIX.4.2-YOYO-SIM.body \
+               store/FIX.4.2-YOYO-SIM.senderseqnums \
+               store/FIX.4.2-YOYO-SIM.targetseqnums \
+               store/FIX.4.2-YOYO-SIM.header \
+               store/FIX.4.2-YOYO-SIM.session 2>/dev/null || true
+    fi
+
     echo "==> Playing scenario: $SCENARIO"
     if ! java -jar "$JAR" "$EFFECTIVE_CONFIG" "$SCENARIO"; then
         echo "FAILED: $SCENARIO" >&2

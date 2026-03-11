@@ -90,6 +90,25 @@ import java.util.List;
  *   count: 3
  *   timeoutMs: 5000
  * </pre>
+ *
+ * <b>perf_test</b> — high-volume throughput / latency test against the proxy:
+ * <pre>
+ *   type: perf_test
+ *   mode: ioc            # ioc (default) | ladder
+ *   symbol: AAPL
+ *   side: BUY
+ *   qty: 100
+ *   price: 99.00         # for ioc: limit price (set far from market so order always cancels)
+ *   rate: 1000           # target orders per second
+ *   totalOrders: 5000    # total orders to send
+ *   warmupOrders: 200    # discard first N samples from latency stats (JIT warm-up)
+ *   reportIntervalSec: 2 # print progress every N seconds (default 5)
+ *   ackTimeoutMs: 30000  # max wait for acks after sending (default 30000)
+ *   # ladder-mode extras:
+ *   ladderStartPx: 90.00
+ *   ladderEndPx:  110.00
+ *   ladderLevels: 20
+ * </pre>
  */
 public class ScenarioStep {
 
@@ -133,6 +152,26 @@ public class ScenarioStep {
     private int count;
     /** Maximum wait time in milliseconds (default 10 000). */
     private int timeoutMs = 10_000;
+
+    // ── perf_test ─────────────────────────────────────────────────────────
+    /** Mode: ioc | ladder. */
+    private String mode;
+    /** Target send rate in orders per second. */
+    private int    rate;
+    /** Total number of orders to send. */
+    private int    totalOrders;
+    /** Orders sent during warmup phase (excluded from latency statistics). */
+    private int    warmupOrders;
+    /** Print a progress line every N seconds (default 5). */
+    private int    reportIntervalSec = 5;
+    /** Ladder mode: lowest price level. */
+    private double ladderStartPx;
+    /** Ladder mode: highest price level. */
+    private double ladderEndPx;
+    /** Ladder mode: number of distinct price levels (default 10). */
+    private int    ladderLevels = 10;
+    /** How long to wait for acks after all orders are sent, ms (default 30 000). */
+    private int    ackTimeoutMs = 30_000;
 
     // ── Getters & Setters ─────────────────────────────────────────────────
 
@@ -198,6 +237,33 @@ public class ScenarioStep {
 
     public int getTimeoutMs()               { return timeoutMs; }
     public void setTimeoutMs(int timeoutMs) { this.timeoutMs = timeoutMs; }
+
+    public String getMode()                   { return mode; }
+    public void   setMode(String v)           { this.mode = v; }
+
+    public int    getRate()                   { return rate; }
+    public void   setRate(int v)              { this.rate = v; }
+
+    public int    getTotalOrders()            { return totalOrders; }
+    public void   setTotalOrders(int v)       { this.totalOrders = v; }
+
+    public int    getWarmupOrders()           { return warmupOrders; }
+    public void   setWarmupOrders(int v)      { this.warmupOrders = v; }
+
+    public int    getReportIntervalSec()      { return reportIntervalSec; }
+    public void   setReportIntervalSec(int v) { this.reportIntervalSec = v; }
+
+    public double getLadderStartPx()          { return ladderStartPx; }
+    public void   setLadderStartPx(double v)  { this.ladderStartPx = v; }
+
+    public double getLadderEndPx()            { return ladderEndPx; }
+    public void   setLadderEndPx(double v)    { this.ladderEndPx = v; }
+
+    public int    getLadderLevels()           { return ladderLevels; }
+    public void   setLadderLevels(int v)      { this.ladderLevels = v; }
+
+    public int    getAckTimeoutMs()           { return ackTimeoutMs; }
+    public void   setAckTimeoutMs(int v)      { this.ackTimeoutMs = v; }
 
     @Override
     public String toString() {

@@ -11,6 +11,8 @@ import quickfix.field.MsgType;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 /**
  * QuickFIX/J {@link Application} implementation for the FIX Test Harness.
@@ -29,6 +31,18 @@ public class FIXTestHarnessApp implements Application {
     private final Scenario       scenario;
     private final CountDownLatch completionLatch = new CountDownLatch(1);
     private final AtomicInteger  reportCounter   = new AtomicInteger(0);
+
+    /**
+     * Callback invoked for every incoming app message when set (used by {@link com.fix.testharness.perf.PerfTestRunner}).
+     * Cleared between perf test runs.
+     */
+    private final AtomicReference<Consumer<Message>> appMsgCallback = new AtomicReference<>();
+
+    /**
+     * When {@code true}, per-message console output via {@link ExecutionReporter} is suppressed.
+     * Set during performance tests to avoid log I/O becoming the bottleneck.
+     */
+    private volatile boolean quietMode = false;
 
     /** Set when onLogon fires — used to guard against duplicate logon events. */
     private volatile boolean runnerStarted = false;
@@ -57,7 +71,7 @@ public class FIXTestHarnessApp implements Application {
         runnerStarted = true;
 
         ScenarioRunner runner = new ScenarioRunner(
-                scenario, sessionId, completionLatch, reportCounter);
+                scenario, sessionId, completionLatch, reportCounter, this);
 
         Thread t = new Thread(runner, "scenario-runner");
         t.setDaemon(true);
@@ -111,13 +125,40 @@ public class FIXTestHarnessApp implements Application {
                 reportCounter.incrementAndGet();
             }
 
-            // Pretty-print to the console
-            ExecutionReporter.report(message, sessionId);
+            // Forward to perf-test runner if active
+            Consumer<Message> cb = appMsgCallback.get();
+            if (cb != null) {
+                cb.accept(message);
+            }
+
+            // Pretty-print to the console (suppressed during performance tests)
+            if (!quietMode) {
+                ExecutionReporter.report(message, sessionId);
+            }
 
         } catch (Exception e) {
             log.error("Error processing incoming message: {}", e.getMessage(), e);
         }
     }
+
+    // ──────────────────────────────────────────────────────────────────────
+    //  Perf-test hooks
+    // ──────────────────────────────────────────────────────────────────────
+
+    /** Register a callback to receive all incoming app messages (used by {@link com.fix.testharness.perf.PerfTestRunner}). */
+    public void setAppMsgCallback(Consumer<Message> cb) { appMsgCallback.set(cb); }
+
+    /** Remove the previously registered message callback. */
+    public void clearAppMsgCallback() { appMsgCallback.set(null); }
+
+    /** When {@code true}, {@link ExecutionReporter} output is silenced (perf test mode). */
+    public void setQuietMode(boolean quiet) { this.quietMode = quiet; }
+
+    /** Reset the raw ExecReport counter (call before each perf test). */
+    public void resetReportCounter() { reportCounter.set(0); }
+
+    /** Return the total number of ExecReports received since the last reset. */
+    public long getReportCounter() { return reportCounter.get(); }
 
     // ──────────────────────────────────────────────────────────────────────
     //  Completion

@@ -1,0 +1,19 @@
+name: "Perf Test - IOC Flood 1K"
+description: |
+  Floods the proxy with 1 000 IOC LIMIT orders/sec.
+  Each order is priced far from the market so it always cancels immediately.
+  Measures proxy NEW-ack latency and round-trip (to-DONE) latency.
+  Tune 'rate' and 'totalOrders' for heavier load.
+
+steps:
+  - type: perf_test
+    mode: ioc
+    symbol: AAPL
+    side: BUY
+    qty: 100
+    price: 1.00          # far below market — always cancels, no fills needed
+    rate: 1000           # target orders per second
+    totalOrders: 15000
+    warmupOrders: 200    # discard first 200 samples for JIT warm-up
+    reportIntervalSec: 2
+    ackTimeoutMs: 30000
