@@ -14,14 +14,18 @@
 #   --config <file>   FIX config file  (default: config/client.cfg)
 #   --host   <host>   Override SocketConnectHost
 #   --port   <port>   Override SocketConnectPort
+#   --tag    <tag>    Docker image tag (default: fix-testharness:latest)
 #   --list            List available scenarios and exit
 #   --help            Show this help and exit
+#
+# The only required dependency is Docker.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 
-JAR="target/fix-testharness-1.0.0-SNAPSHOT.jar"
+IMAGE_TAG="${IMAGE_TAG:-fix-testharness:latest}"
 
 # ── Defaults ──────────────────────────────────────────────────────────────
 CONFIG="config/client.cfg"
@@ -31,7 +35,6 @@ SCENARIOS=()
 
 # ── Parse arguments ───────────────────────────────────────────────────────
 usage() {
-    # Print the header comment block (lines 2..first blank-after-shebang block)
     awk 'NR>1 && /^#/{print} NR>1 && !/^#/{exit}' "$0" | sed 's/^# \{0,1\}//'
     exit 0
 }
@@ -52,9 +55,9 @@ while [[ $# -gt 0 ]]; do
         --config)     CONFIG="$2"; shift 2 ;;
         --host)       OPT_HOST="$2"; shift 2 ;;
         --port)       OPT_PORT="$2"; shift 2 ;;
+        --tag)        IMAGE_TAG="$2"; shift 2 ;;
         --*)          echo "ERROR: unknown option: $1" >&2; exit 1 ;;
         *)
-            # Bare name or path
             arg="$1"
             if [[ "$arg" != */* && "$arg" != *.yml ]]; then
                 arg="scenarios/${arg}.yml"
@@ -67,7 +70,6 @@ done
 
 # ── Default: all non-perf scenarios ────────────────────────────────────────
 if [[ ${#SCENARIOS[@]} -eq 0 ]]; then
-    # perf_*.yml are excluded from the default run — run them explicitly
     while IFS= read -r f; do
         [[ "$(basename "$f")" == perf_* ]] && continue
         SCENARIOS+=("$f")
@@ -77,29 +79,47 @@ if [[ ${#SCENARIOS[@]} -eq 0 ]]; then
     fi
 fi
 
-# ── Build if jar is missing ───────────────────────────────────────────────
-if [[ ! -f "$JAR" ]]; then
-    echo "==> JAR not found, building first..."
-    ./build.sh
-fi
-
 # ── Validate config ───────────────────────────────────────────────────────
 if [[ ! -f "$CONFIG" ]]; then
     echo "ERROR: config file not found: $CONFIG" >&2; exit 1
 fi
 
 # ── Optional host/port override via temp config ───────────────────────────
-EFFECTIVE_CONFIG="$CONFIG"
+# Create a modified config on the host; mount it into the container.
+CLEANUP_CONFIG=""
+CONTAINER_CONFIG="$CONFIG"
+
 if [[ -n "$OPT_HOST" || -n "$OPT_PORT" ]]; then
-    EFFECTIVE_CONFIG="$(mktemp /tmp/client.cfg.XXXXXX)"
-    trap 'rm -f "$EFFECTIVE_CONFIG"' EXIT
-    cp "$CONFIG" "$EFFECTIVE_CONFIG"
-    [[ -n "$OPT_HOST" ]] && sed -i.bak "s/^SocketConnectHost=.*/SocketConnectHost=${OPT_HOST}/" "$EFFECTIVE_CONFIG"
-    [[ -n "$OPT_PORT" ]] && sed -i.bak "s/^SocketConnectPort=.*/SocketConnectPort=${OPT_PORT}/" "$EFFECTIVE_CONFIG"
-    rm -f "${EFFECTIVE_CONFIG}.bak"
+    TMP_CFG="$(mktemp "$SCRIPT_DIR/config/.effective.cfg.XXXXXX")"
+    CLEANUP_CONFIG="$TMP_CFG"
+    trap 'rm -f "$CLEANUP_CONFIG"' EXIT
+    cp "$CONFIG" "$TMP_CFG"
+    [[ -n "$OPT_HOST" ]] && sed -i.bak "s/^SocketConnectHost=.*/SocketConnectHost=${OPT_HOST}/" "$TMP_CFG"
+    [[ -n "$OPT_PORT" ]] && sed -i.bak "s/^SocketConnectPort=.*/SocketConnectPort=${OPT_PORT}/" "$TMP_CFG"
+    rm -f "${TMP_CFG}.bak"
+    # Container sees it as config/<filename> since config/ dir is mounted at /app/config
+    CONTAINER_CONFIG="config/$(basename "$TMP_CFG")"
 fi
 
-echo "==> Config: $EFFECTIVE_CONFIG"
+# ── Resolve FIX server hostname for --add-host ────────────────────────────
+# Docker build VMs / containers may not inherit the host's VPN/custom DNS.
+# Extract SocketConnectHost from the effective config and resolve it on the host.
+_EXTRA_HOST_ARGS=()
+
+_fix_host="$(grep '^SocketConnectHost=' "${CLEANUP_CONFIG:-$CONFIG}" | cut -d= -f2 | tr -d '[:space:]')"
+if [[ -n "$_fix_host" ]]; then
+    _fix_ip="$(python3 -c "import socket; print(socket.gethostbyname('$_fix_host'))" 2>/dev/null || true)"
+    if [[ -n "$_fix_ip" && "$_fix_ip" != "$_fix_host" ]]; then
+        echo "[INFO] Host resolution: ${_fix_host} -> ${_fix_ip} (--add-host)"
+        _EXTRA_HOST_ARGS=(--add-host "${_fix_host}:${_fix_ip}")
+    fi
+fi
+
+# ── Prepare runtime directories ───────────────────────────────────────────
+mkdir -p "$SCRIPT_DIR/store" "$SCRIPT_DIR/logs"
+
+echo "==> Config: $CONTAINER_CONFIG"
+echo "==> Image:  $IMAGE_TAG"
 echo ""
 
 # ── Run each scenario ─────────────────────────────────────────────────────
@@ -111,19 +131,15 @@ for SCENARIO in "${SCENARIOS[@]}"; do
         continue
     fi
 
-    # Performance scenarios: wipe the FIX session store first to prevent old
-    # sequence numbers from triggering a ResendRequest flood on reconnect.
-    if [[ "$(basename "$SCENARIO")" == perf_* ]]; then
-        echo "==> Perf scenario detected — wiping FIX store to reset sequence numbers..."
-        rm -f store/FIX.4.2-YOYO-SIM.body \
-               store/FIX.4.2-YOYO-SIM.senderseqnums \
-               store/FIX.4.2-YOYO-SIM.targetseqnums \
-               store/FIX.4.2-YOYO-SIM.header \
-               store/FIX.4.2-YOYO-SIM.session 2>/dev/null || true
-    fi
-
     echo "==> Playing scenario: $SCENARIO"
-    if ! java -jar "$JAR" "$EFFECTIVE_CONFIG" "$SCENARIO"; then
+    if ! docker run --rm \
+            -v "$SCRIPT_DIR/config:/app/config:ro" \
+            -v "$SCRIPT_DIR/scenarios:/app/scenarios:ro" \
+            -v "$SCRIPT_DIR/store:/app/store" \
+            -v "$SCRIPT_DIR/logs:/app/logs" \
+            "${_EXTRA_HOST_ARGS[@]}" \
+            "$IMAGE_TAG" \
+            "$CONTAINER_CONFIG" "$SCENARIO"; then
         echo "FAILED: $SCENARIO" >&2
         FAILED+=("$SCENARIO")
     fi

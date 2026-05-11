@@ -30,20 +30,28 @@ public class PerfStats {
     public final LongAdder rejects    = new LongAdder();
 
     // ── Raw latency samples (nanoseconds) ──────────────────────────────────
-    private final long[]        newSamples    = new long[MAX_SAMPLES];
-    private final long[]        doneSamples   = new long[MAX_SAMPLES];
-    private final AtomicInteger newSampleIdx  = new AtomicInteger(0);
-    private final AtomicInteger doneSampleIdx = new AtomicInteger(0);
+    private final long[]        newSamples         = new long[MAX_SAMPLES];
+    private final long[]        doneSamples        = new long[MAX_SAMPLES];
+    private final long[]        newToDoneSamples   = new long[MAX_SAMPLES];
+    private final AtomicInteger newSampleIdx       = new AtomicInteger(0);
+    private final AtomicInteger doneSampleIdx      = new AtomicInteger(0);
+    private final AtomicInteger newToDoneSampleIdx = new AtomicInteger(0);
 
     // ── Running sums (for mean, excluding warmup) ───────────────────────────
-    public final LongAdder newSumNs  = new LongAdder();
-    public final LongAdder doneSumNs = new LongAdder();
+    public final LongAdder newSumNs       = new LongAdder();
+    public final LongAdder doneSumNs      = new LongAdder();
+    public final LongAdder newToDoneSumNs = new LongAdder();
+
+    // ── Counters for NEW→DONE ───────────────────────────────────────────────
+    public final LongAdder newToDoneAcks = new LongAdder();
 
     // ── Running min/max (volatile; occasional races on min/max are acceptable) ─
-    private volatile long newMinNs  = Long.MAX_VALUE;
-    private volatile long newMaxNs  = 0;
-    private volatile long doneMinNs = Long.MAX_VALUE;
-    private volatile long doneMaxNs = 0;
+    private volatile long newMinNs       = Long.MAX_VALUE;
+    private volatile long newMaxNs       = 0;
+    private volatile long doneMinNs      = Long.MAX_VALUE;
+    private volatile long doneMaxNs      = 0;
+    private volatile long newToDoneMinNs = Long.MAX_VALUE;
+    private volatile long newToDoneMaxNs = 0;
 
     private final int warmupCount;
 
@@ -79,6 +87,23 @@ public class PerfStats {
         if (idx < MAX_SAMPLES) doneSamples[idx] = latNs;
     }
 
+    /**
+     * Record the time between the NEW ack and the DONE ack for a single order.
+     * This delta is measured entirely on the client side and reflects proxy-internal
+     * IOC cancel processing latency (no network component).
+     */
+    public void recordNewToDone(long latNs) {
+        long ordinal = newToDoneAcks.sum();
+        newToDoneAcks.increment();
+        if (ordinal < warmupCount) return;
+
+        newToDoneSumNs.add(latNs);
+        if (latNs < newToDoneMinNs) newToDoneMinNs = latNs;
+        if (latNs > newToDoneMaxNs) newToDoneMaxNs = latNs;
+        int idx = newToDoneSampleIdx.getAndIncrement();
+        if (idx < MAX_SAMPLES) newToDoneSamples[idx] = latNs;
+    }
+
     public void incrementRejects() { rejects.increment(); }
 
     // ── Report building (call after test is complete) ────────────────────────
@@ -97,6 +122,15 @@ public class PerfStats {
         Arrays.sort(s);
         long cnt = Math.max(0, doneAcks.sum() - warmupCount);
         return new LatencyReport("to-DONE (IOC-cxl / fill)", cnt, doneSumNs.sum(), doneMinNs, doneMaxNs, s);
+    }
+
+    public LatencyReport buildNewToDoneReport() {
+        int n = Math.min(newToDoneSampleIdx.get(), MAX_SAMPLES);
+        long[] s = Arrays.copyOf(newToDoneSamples, n);
+        Arrays.sort(s);
+        long cnt = Math.max(0, newToDoneAcks.sum() - warmupCount);
+        return new LatencyReport("NEW→DONE (proxy cancel delay)", cnt, newToDoneSumNs.sum(),
+                                 newToDoneMinNs, newToDoneMaxNs, s);
     }
 
     // ── LatencyReport ────────────────────────────────────────────────────────

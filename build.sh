@@ -1,20 +1,47 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# build.sh — build the FIX Test Harness fat-jar
+# build.sh — build the FIX Test Harness Docker image
+#
+# Usage:
+#   ./build.sh [options]
+#
+# Options:
+#   --tag <tag>       Image tag  (default: fix-testharness:latest)
+#   --no-cache        Pass --no-cache to docker build
+#   --help            Show this help and exit
+#
+# The only required dependency is Docker.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
-echo "==> Building fix-testharness..."
-mvn clean package -DskipTests -q
+# ── Defaults ──────────────────────────────────────────────────────────────
+IMAGE_TAG="${IMAGE_TAG:-fix-testharness:latest}"
+NO_CACHE=""
 
-JAR="target/fix-testharness-1.0.0-SNAPSHOT.jar"
-echo "==> Build complete: $JAR"
+# ── Parse arguments ───────────────────────────────────────────────────────
+usage() {
+    awk 'NR>1 && /^#/{print} NR>1 && !/^#/{exit}' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --help|-h)      usage ;;
+        --tag)          IMAGE_TAG="$2"; shift 2 ;;
+        --no-cache)     NO_CACHE="--no-cache"; shift ;;
+        *)              echo "ERROR: unknown option: $1" >&2; exit 1 ;;
+    esac
+done
+
+# ── Build ─────────────────────────────────────────────────────────────────
+echo "==> Building Docker image: $IMAGE_TAG"
+# shellcheck disable=SC2086
+docker build $NO_CACHE -t "$IMAGE_TAG" .
+
 echo ""
-echo "Usage:"
-echo "  java -jar $JAR [config/client.cfg] [scenarios/order_flow.yml]"
+echo "==> Build complete: $IMAGE_TAG"
 echo ""
-echo "Examples:"
-echo "  java -jar $JAR"
-echo "  java -jar $JAR config/client.cfg scenarios/quote_flow.yml"
+echo "Run scenarios with:"
+echo "  ./play_scenario.sh [options] [scenario ...]"

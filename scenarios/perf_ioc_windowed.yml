@@ -1,0 +1,28 @@
+name: "Perf Test - IOC Windowed (flow-controlled)"
+description: |
+  IOC perf test with a sliding in-flight window.
+  The sender blocks until a DONE ack returns, so at most `windowSize`
+  orders are outstanding at any moment.  This matches the send rate to
+  the proxy's actual processing capacity and gives accurate latency
+  measurements (no queue-wait inflation from a flooded TCP buffer).
+
+  With 24 ms network RTT and windowSize=50:
+    theoretical max throughput ≈ windowSize / (2 * RTT) ≈ 50 / 0.048 ≈ 1042 o/s
+  In practice the proxy/exchange pipeline limits the rate; windowSize
+  just ensures we never flood ahead of capacity.
+
+  Tune windowSize up or down to find the proxy's saturation point.
+
+steps:
+  - type: perf_test
+    mode: ioc
+    symbol: AAPL
+    side: BUY
+    qty: 100
+    price: 1.00          # far below market — always cancels, no fills needed
+    rate: 5000           # ceiling rate (window will throttle if proxy is slower)
+    totalOrders: 15000
+    warmupOrders: 200    # discard first 200 samples for JIT warm-up
+    windowSize: 50       # max outstanding (un-DONE) orders; 0 = unlimited flood
+    reportIntervalSec: 5
+    ackTimeoutMs: 300000 # 5 min — window-mode drains at proxy speed, give it time

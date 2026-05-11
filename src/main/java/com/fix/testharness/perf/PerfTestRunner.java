@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 
@@ -55,10 +56,17 @@ public class PerfTestRunner {
     // ── Internal correlation state ──────────────────────────────────────────
     /** clOrdId → send time (nanos). Populated just before sendToTarget(). */
     private final ConcurrentHashMap<String, Long> pendingNew = new ConcurrentHashMap<>(16384);
+    /** clOrdId → NEW-ack arrival time (nanos). Stored when first ExecReport arrives. */
+    private final ConcurrentHashMap<String, Long> newRecvNs  = new ConcurrentHashMap<>(16384);
     /** ClOrdIds for which a NEW ack has already been recorded. */
     private final Set<String> newSeen = ConcurrentHashMap.newKeySet(16384);
     /** Number of terminal ExecReports received (used to decide when to stop waiting). */
     private final AtomicInteger doneCount = new AtomicInteger(0);
+    /**
+     * Flow-control window: limits orders in-flight to {@code windowSize}.
+     * null when windowSize==0 (unlimited / flood mode).
+     */
+    private Semaphore windowSem = null;
 
     /**
      * Unique prefix for all ClOrdIDs in this test run.
@@ -91,6 +99,12 @@ public class PerfTestRunner {
         int    total = step.getTotalOrders() > 0 ? step.getTotalOrders() : 1000;
 
         printHeader(mode, rate, total);
+
+        // Initialise flow-control window (0 = unlimited)
+        int ws = step.getWindowSize();
+        if (ws > 0) {
+            windowSem = new Semaphore(ws);
+        }
 
         // Suppress per-message console output and register our latency callback
         app.setQuietMode(true);
@@ -137,24 +151,30 @@ public class PerfTestRunner {
     //  IOC flood
     // ──────────────────────────────────────────────────────────────────────
 
-    private void floodIocOrders(int rate, int total) {
+    private void floodIocOrders(int rate, int total) throws InterruptedException {
         long   intervalNs = 1_000_000_000L / rate;
         String sym   = step.getSymbol() != null ? step.getSymbol() : "AAPL";
         double price = step.getPrice()  > 0     ? step.getPrice()  : 100.00;
         int    qty   = step.getQty()    > 0     ? step.getQty()    : 100;
         char   side  = "SELL".equalsIgnoreCase(step.getSide()) ? Side.SELL : Side.BUY;
 
-        log.info("► Sending {} IOC orders @ {} o/s  (interval {}µs)  sym={} side={} qty={} px={}",
-                 total, rate, intervalNs / 1000, sym, side == Side.BUY ? "BUY" : "SELL", qty, price);
+        String windowDesc = windowSem != null ? "  window=" + step.getWindowSize() : "  window=UNLIMITED";
+        log.info("► Sending {} IOC orders @ {} o/s  (interval {}µs){}  sym={} side={} qty={} px={}",
+                 total, rate, intervalNs / 1000, windowDesc, sym, side == Side.BUY ? "BUY" : "SELL", qty, price);
 
         long sendStartNs = System.nanoTime();
 
         for (int i = 0; i < total; i++) {
-            // Rate pacing: park until the scheduled send slot
-            long targetNs = sendStartNs + (long) i * intervalNs;
-            long sleepNs  = targetNs - System.nanoTime();
-            if (sleepNs > 500L) {
-                LockSupport.parkNanos(sleepNs);
+            // Flow control: block if window is full (too many unacked orders)
+            if (windowSem != null) {
+                windowSem.acquire();
+            } else {
+                // Flood mode: rate pacing only
+                long targetNs = sendStartNs + (long) i * intervalNs;
+                long sleepNs  = targetNs - System.nanoTime();
+                if (sleepNs > 500L) {
+                    LockSupport.parkNanos(sleepNs);
+                }
             }
 
             String clOrdId = clOrdPrefix + i;
@@ -261,6 +281,7 @@ public class PerfTestRunner {
             // First report for this ClOrdId = NEW ack
             if (newSeen.add(clOrdId)) {
                 stats.recordNew(latNs);
+                newRecvNs.put(clOrdId, recvNs);
             }
 
             // Terminal ExecType values (FIX 4.2):
@@ -270,8 +291,16 @@ public class PerfTestRunner {
                 execType == ExecType.REJECTED   ||
                 execType == ExecType.DONE_FOR_DAY) {
                 stats.recordDone(latNs);
+                Long newArrival = newRecvNs.remove(clOrdId);
+                if (newArrival != null) {
+                    stats.recordNewToDone(recvNs - newArrival);
+                }
                 pendingNew.remove(clOrdId);
                 doneCount.incrementAndGet();
+                // Release window slot so the sender can dispatch the next order
+                if (windowSem != null) {
+                    windowSem.release();
+                }
             }
 
             if (execType == ExecType.REJECTED) {
@@ -358,8 +387,9 @@ public class PerfTestRunner {
         double pctNew    = sent > 0 ? 100.0 * newAcks  / sent : 0;
         double pctDone   = sent > 0 ? 100.0 * doneAcks / sent : 0;
 
-        PerfStats.LatencyReport newRpt  = stats.buildNewReport();
-        PerfStats.LatencyReport doneRpt = stats.buildDoneReport();
+        PerfStats.LatencyReport newRpt       = stats.buildNewReport();
+        PerfStats.LatencyReport doneRpt      = stats.buildDoneReport();
+        PerfStats.LatencyReport newToDoneRpt = stats.buildNewToDoneReport();
 
         log.info("╔══════════════════════════════════════════════════════════════╗");
         log.info("║                  PERFORMANCE TEST RESULTS                   ║");
@@ -379,7 +409,14 @@ public class PerfTestRunner {
                  doneAcks, String.format("%.2f", pctDone));
         log.info("  Rejects      : {}", rejects);
         log.info("╠══════════════════════════════════════════════════════════════╣");
+        log.info("  HOP BREAKDOWN (IOC order flow):");
+        log.info("    [1] send → NEW ack     (network RTT + proxy accept)");
+        log.info("    [2] NEW ack → DONE ack (proxy cancel processing, no network)");
+        log.info("    [3] send → DONE ack    (total end-to-end = hop1 + hop2)");
+        log.info("╠══════════════════════════════════════════════════════════════╣");
         printLatRow(newRpt);
+        log.info("╠══════════════════════════════════════════════════════════════╣");
+        printLatRow(newToDoneRpt);
         log.info("╠══════════════════════════════════════════════════════════════╣");
         printLatRow(doneRpt);
         log.info("╚══════════════════════════════════════════════════════════════╝");

@@ -172,6 +172,12 @@ public class ScenarioStep {
     private int    ladderLevels = 10;
     /** How long to wait for acks after all orders are sent, ms (default 30 000). */
     private int    ackTimeoutMs = 30_000;
+    /**
+     * Max outstanding (un-DONE) orders at any moment.  0 = unlimited (flood mode).
+     * Set to e.g. 50 to cap in-flight orders and get accurate latency measurements
+     * when the proxy cannot keep up with the send rate.
+     */
+    private int    windowSize   = 0;
 
     // ── Getters & Setters ─────────────────────────────────────────────────
 
@@ -264,6 +270,9 @@ public class ScenarioStep {
 
     public int    getAckTimeoutMs()           { return ackTimeoutMs; }
     public void   setAckTimeoutMs(int v)      { this.ackTimeoutMs = v; }
+
+    public int    getWindowSize()             { return windowSize; }
+    public void   setWindowSize(int v)        { this.windowSize = v; }
 
     @Override
     public String toString() {

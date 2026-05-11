@@ -1,0 +1,8 @@
+**/.git
+**/.DS_Store
+target/
+store/
+logs/
+*.iml
+.idea/
+dependency-reduced-pom.xml
