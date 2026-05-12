@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Sync FIX store seqnums to match the proxy's reported state.
 #
-# Usage: ./sync_seqnums.sh <proxy_local> <proxy_remote>
+# Usage: ./sync_seqnums.sh [<proxy_local> <proxy_remote>]
+#   No args: reset to 1/1 (use after proxy+simulator restart)
 #   proxy_local  = "local" value from proxy (what proxy expects to receive from client)
 #                  → written to senderseqnums
 #   proxy_remote = "remote" value from proxy (proxy's own outgoing seqnum)
@@ -15,13 +16,17 @@ set -euo pipefail
 STORE_DIR="$(cd "$(dirname "$0")" && pwd)/store"
 SESSION="FIX.4.2-YOYO-SIM"
 
-if [[ $# -ne 2 ]]; then
-    echo "Usage: $0 <proxy_local> <proxy_remote>" >&2
+if [[ $# -eq 0 ]]; then
+    PROXY_LOCAL=1
+    PROXY_REMOTE=1
+elif [[ $# -eq 2 ]]; then
+    PROXY_LOCAL="$1"
+    PROXY_REMOTE="$2"
+else
+    echo "Usage: $0 [<proxy_local> <proxy_remote>]" >&2
+    echo "  No args: reset to 1/1" >&2
     exit 1
 fi
-
-PROXY_LOCAL="$1"    # → senderseqnums
-PROXY_REMOTE="$2"   # → targetseqnums
 
 python3 - <<PYEOF
 import struct, os, sys
