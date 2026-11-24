@@ -351,7 +351,7 @@ public class PerfTestRunner {
 
     private void printHeader(String mode, int rate, int total) {
         log.info("╔══════════════════════════════════════════════════════════════╗");
-        log.info("║          PROXY PERFORMANCE TEST                    ║");
+        log.info("║          PROXY PERFORMANCE TEST                              ║");
         log.info("╠══════════════════════════════════════════════════════════════╣");
         log.info("║  Mode:          {}", pad(mode.toUpperCase(), 47));
         log.info("║  Symbol:        {}", pad(step.getSymbol() != null ? step.getSymbol() : "AAPL", 47));
