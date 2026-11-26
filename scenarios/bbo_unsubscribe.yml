@@ -1,0 +1,61 @@
+name: "BBO unsubscribe stops updates"
+description: >
+  After an unsubscribe, a better offer must not be reported. TSLA is used so this scenario does
+  not share a book with the other BBO scenarios.
+
+steps:
+  - type: market_data_request
+    mdReqId: "BBO-UNS-1"
+    subscriptionType: subscribe
+    symbols: ["TSLA"]
+
+  - type: new_order
+    clOrdId: "BBO-N-S1"
+    symbol: "TSLA"
+    side: SELL
+    ordType: LIMIT
+    qty: 10
+    price: 11.00
+    tif: GTC
+
+  - type: expect_bbo
+    symbol: "TSLA"
+    ask: "11.00"
+    askQty: 10
+
+  - type: market_data_request
+    mdReqId: "BBO-UNS-1"
+    subscriptionType: unsubscribe
+    symbols: ["TSLA"]
+
+  # A better offer is now rested, but no update should arrive
+  - type: new_order
+    clOrdId: "BBO-N-S2"
+    symbol: "TSLA"
+    side: SELL
+    ordType: LIMIT
+    qty: 5
+    price: 10.50
+    tif: GTC
+
+  - type: wait
+    ms: 1000
+
+  # Still the old BBO: the expectation passes immediately only because nothing changed
+  - type: expect_bbo
+    symbol: "TSLA"
+    ask: "11.00"
+    askQty: 10
+    timeoutMs: 500
+
+  - type: cancel
+    clOrdId: "BBO-N-C2"
+    origClOrdId: "BBO-N-S2"
+    symbol: "TSLA"
+    side: SELL
+
+  - type: cancel
+    clOrdId: "BBO-N-C1"
+    origClOrdId: "BBO-N-S1"
+    symbol: "TSLA"
+    side: SELL

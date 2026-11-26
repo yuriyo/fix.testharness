@@ -93,11 +93,19 @@ public class Main {
 
         if (!completed) {
             log.warn("Scenario did not complete within {}s — stopping anyway.", timeout);
+            app.recordFailure("scenario did not complete within " + timeout + "s");
         }
 
         // ── Stop ─────────────────────────────────────────────────────────
         log.info("Stopping FIX initiator...");
         initiator.stop();
+
+        // A failed expect_* check or an incomplete run makes the whole run fail.
+        int failures = app.failureCount();
+        if (failures > 0) {
+            log.error("Scenario FAILED: {} check(s) did not pass.", failures);
+            System.exit(1);
+        }
         log.info("Done.");
     }
 

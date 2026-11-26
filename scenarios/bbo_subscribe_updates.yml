@@ -1,0 +1,101 @@
+name: "BBO subscribe and incremental updates"
+description: >
+  Subscribes to the top of book (MarketDataRequest type 1) for NVDA and checks each change arrives
+  as a MarketDataIncrementalRefresh: a new offer, a new bid, a better offer, a cancel that moves the
+  BBO back, and a cancel that empties a side. Finishes with an unsubscribe.
+
+steps:
+  - type: market_data_request
+    mdReqId: "BBO-SUB-1"
+    subscriptionType: subscribe
+    symbols: ["NVDA"]
+
+  # Snapshot of an empty book comes first
+  - type: expect_bbo
+    symbol: "NVDA"
+    bid: "none"
+    ask: "none"
+
+  - type: new_order
+    clOrdId: "BBO-U-S1"
+    symbol: "NVDA"
+    side: SELL
+    ordType: LIMIT
+    qty: 20
+    price: 10.50
+    tif: GTC
+
+  - type: expect_bbo
+    symbol: "NVDA"
+    ask: "10.50"
+    askQty: 20
+
+  - type: new_order
+    clOrdId: "BBO-U-B1"
+    symbol: "NVDA"
+    side: BUY
+    ordType: LIMIT
+    qty: 5
+    price: 9.00
+    tif: GTC
+
+  - type: expect_bbo
+    symbol: "NVDA"
+    bid: "9.00"
+    bidQty: 5
+    ask: "10.50"
+    askQty: 20
+
+  # A better offer becomes the new BBO
+  - type: new_order
+    clOrdId: "BBO-U-S2"
+    symbol: "NVDA"
+    side: SELL
+    ordType: LIMIT
+    qty: 40
+    price: 10.40
+    tif: GTC
+
+  - type: expect_bbo
+    symbol: "NVDA"
+    ask: "10.40"
+    askQty: 40
+
+  # Cancelling the best offer moves the BBO back to the previous level
+  - type: cancel
+    clOrdId: "BBO-U-C1"
+    origClOrdId: "BBO-U-S2"
+    symbol: "NVDA"
+    side: SELL
+
+  - type: expect_bbo
+    symbol: "NVDA"
+    ask: "10.50"
+    askQty: 20
+
+  # Emptying a side sends a delete
+  - type: cancel
+    clOrdId: "BBO-U-C2"
+    origClOrdId: "BBO-U-S1"
+    symbol: "NVDA"
+    side: SELL
+
+  - type: expect_bbo
+    symbol: "NVDA"
+    ask: "none"
+
+  - type: cancel
+    clOrdId: "BBO-U-C3"
+    origClOrdId: "BBO-U-B1"
+    symbol: "NVDA"
+    side: BUY
+
+  - type: expect_bbo
+    symbol: "NVDA"
+    bid: "none"
+    ask: "none"
+
+  - type: market_data_request
+    mdReqId: "BBO-SUB-1"
+    subscriptionType: unsubscribe
+    symbols: ["NVDA"]

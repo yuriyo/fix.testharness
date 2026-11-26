@@ -1,0 +1,32 @@
+name: "BBO request rejects"
+description: >
+  Requests the simulator must refuse with MarketDataRequestReject (35=Y):
+  unknown symbol (reason 0), MarketDepth other than 1 (reason 5), and a trade entry type (reason 8).
+  Each expect_md_reject waits until the total number of rejects for that reason reaches the count.
+
+steps:
+  - type: market_data_request
+    mdReqId: "BBO-REJ-1"
+    subscriptionType: snapshot
+    symbols: ["NOPE"]
+
+  - type: expect_md_reject
+    rejectReason: "0"
+
+  - type: market_data_request
+    mdReqId: "BBO-REJ-2"
+    subscriptionType: snapshot
+    marketDepth: 0
+    symbols: ["GOOGL"]
+
+  - type: expect_md_reject
+    rejectReason: "5"
+
+  - type: market_data_request
+    mdReqId: "BBO-REJ-3"
+    subscriptionType: snapshot
+    entryTypes: ["trade"]
+    symbols: ["GOOGL"]
+
+  - type: expect_md_reject
+    rejectReason: "8"

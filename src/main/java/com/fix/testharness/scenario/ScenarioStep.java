@@ -179,6 +179,35 @@ public class ScenarioStep {
      */
     private int    windowSize   = 0;
 
+    // ── Market data (market_data_request, expect_bbo, expect_md_reject) ──────
+
+    /** MDReqID (262) that ties a request to its replies. */
+    private String mdReqId;
+
+    /** snapshot | subscribe | unsubscribe (SubscriptionRequestType 263). */
+    private String subscriptionType;
+
+    /** MarketDepth (264). Only 1 (top of book) is supported by the simulator. */
+    private int    marketDepth = 1;
+
+    /** Entry types to request: bid | offer. Empty means both. */
+    private List<String> entryTypes;
+
+    /** Symbols in the request (NoRelatedSym group). */
+    private List<String> symbols;
+
+    /** expect_bbo: best bid price, or "none" for an empty side. Omit to skip the check. */
+    private String  bid;
+    /** expect_bbo: total quantity at the best bid. Omit to skip the check. */
+    private Integer bidQty;
+    /** expect_bbo: best offer price, or "none" for an empty side. Omit to skip the check. */
+    private String  ask;
+    /** expect_bbo: total quantity at the best offer. Omit to skip the check. */
+    private Integer askQty;
+
+    /** expect_md_reject: MDReqRejReason (281) value to wait for, e.g. "0". */
+    private String rejectReason;
+
     // ── Getters & Setters ─────────────────────────────────────────────────
 
     public String getType()                 { return type; }
@@ -273,6 +302,36 @@ public class ScenarioStep {
 
     public int    getWindowSize()             { return windowSize; }
     public void   setWindowSize(int v)        { this.windowSize = v; }
+
+    public String getMdReqId()                { return mdReqId; }
+    public void   setMdReqId(String v)        { this.mdReqId = v; }
+
+    public String getSubscriptionType()       { return subscriptionType; }
+    public void   setSubscriptionType(String v) { this.subscriptionType = v; }
+
+    public int    getMarketDepth()            { return marketDepth; }
+    public void   setMarketDepth(int v)       { this.marketDepth = v; }
+
+    public List<String> getEntryTypes()       { return entryTypes; }
+    public void   setEntryTypes(List<String> v) { this.entryTypes = v; }
+
+    public List<String> getSymbols()          { return symbols; }
+    public void   setSymbols(List<String> v)  { this.symbols = v; }
+
+    public String getBid()                    { return bid; }
+    public void   setBid(String v)            { this.bid = v; }
+
+    public Integer getBidQty()                { return bidQty; }
+    public void   setBidQty(Integer v)        { this.bidQty = v; }
+
+    public String getAsk()                    { return ask; }
+    public void   setAsk(String v)            { this.ask = v; }
+
+    public Integer getAskQty()                { return askQty; }
+    public void   setAskQty(Integer v)        { this.askQty = v; }
+
+    public String getRejectReason()           { return rejectReason; }
+    public void   setRejectReason(String v)   { this.rejectReason = v; }
 
     @Override
     public String toString() {

@@ -170,6 +170,45 @@ Blocks until `count` ExecutionReport messages have been received from the server
   timeoutMs: 5000   # max wait in ms (default 10 000)
 ```
 
+#### `market_data_request` — MarketDataRequest (V), top of book
+
+Sends a request for the best bid and offer (BBO) of one or more symbols. The simulator answers with a snapshot (`W`) per symbol, and with a subscription it sends incremental updates (`X`). A refused request gets a reject (`Y`).
+
+```yaml
+- type: market_data_request
+  mdReqId: "BBO-1"              # request id; the replies carry it back
+  subscriptionType: snapshot    # snapshot | subscribe | unsubscribe
+  marketDepth: 1                # 1 = top of book (default); the simulator supports only 1
+  entryTypes: ["bid", "offer"]  # optional; default both. "trade" is accepted for negative tests
+  symbols: ["GOOGL", "SPY"]
+```
+
+#### `expect_bbo` — check the best bid and offer
+
+Waits until the symbol's best bid and offer match. Fields you leave out are not checked. Use `"none"` for an empty side. Quantities are the total open quantity at that price. If the values do not match before `timeoutMs` (default 5 000), the run fails.
+
+```yaml
+- type: expect_bbo
+  symbol: "GOOGL"
+  bid: "9.90"     # or "none"
+  bidQty: 150
+  ask: "10.10"    # or "none"
+  askQty: 70
+  timeoutMs: 2000
+```
+
+#### `expect_md_reject` — check that the simulator refused a request
+
+Waits until `count` (default 1) `MarketDataRequestReject` messages with this reason have arrived in total. Reasons: `0` unknown symbol, `4` unsupported subscription type, `5` unsupported market depth, `6` unsupported update type, `8` unsupported entry type.
+
+```yaml
+- type: expect_md_reject
+  rejectReason: "0"
+  timeoutMs: 2000
+```
+
+A check that fails, or a step that cannot run (for example a bad value in the YAML), makes the run fail. `play_scenario.sh` reports it and exits 1.
+
 ---
 
 ## Included Scenarios
@@ -179,6 +218,17 @@ Blocks until `count` ExecutionReport messages have been received from the server
 | `scenarios/order_flow.yml` | Limit orders, partial fills, replace, cancel, IOC, FOK-market |
 | `scenarios/quote_flow.yml` | Quote (S) and MassQuote (i); crosses against quote liquidity |
 | `scenarios/stop_orders.yml` | STOP and STOP LIMIT orders; trigger and cancel |
+| `scenarios/bbo_snapshot.yml` | BBO snapshot (V type 0): sums quantity at the best level, then the empty book after cancels |
+| `scenarios/bbo_subscribe_updates.yml` | Subscribe (V type 1): updates for a new offer, a new bid, a better offer, a cancel that moves the BBO back, and a side that empties |
+| `scenarios/bbo_unsubscribe.yml` | After unsubscribe (V type 2), a better offer is not reported |
+| `scenarios/bbo_multi_symbol.yml` | One request for two symbols, one snapshot each |
+| `scenarios/bbo_rejects.yml` | Rejects (Y) for an unknown symbol (0), a depth other than 1 (5), and a trade entry type (8) |
+
+The BBO scenarios use GOOGL, NVDA, TSLA, SPY and AMZN, which the other scenarios do not use. Each one cancels its own orders, so the books are empty when it finishes. Run them with:
+
+```bash
+./play_scenario.sh --host host.docker.internal --port 9876 bbo_snapshot bbo_subscribe_updates bbo_unsubscribe bbo_multi_symbol bbo_rejects
+```
 
 ---
 

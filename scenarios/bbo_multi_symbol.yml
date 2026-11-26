@@ -1,0 +1,55 @@
+name: "BBO snapshot for several symbols"
+description: >
+  One MarketDataRequest for two symbols returns one snapshot per symbol. Each symbol keeps its own
+  best bid and offer. SPY and AMZN are used so the other BBO scenarios do not share their books.
+
+steps:
+  - type: new_order
+    clOrdId: "BBO-M-S1"
+    symbol: "SPY"
+    side: SELL
+    ordType: LIMIT
+    qty: 3
+    price: 500.25
+    tif: GTC
+
+  - type: new_order
+    clOrdId: "BBO-M-B1"
+    symbol: "AMZN"
+    side: BUY
+    ordType: LIMIT
+    qty: 2
+    price: 180.00
+    tif: GTC
+
+  - type: wait
+    ms: 300
+
+  - type: market_data_request
+    mdReqId: "BBO-MULTI-1"
+    subscriptionType: snapshot
+    symbols: ["SPY", "AMZN"]
+
+  - type: expect_bbo
+    symbol: "SPY"
+    bid: "none"
+    ask: "500.25"
+    askQty: 3
+
+  - type: expect_bbo
+    symbol: "AMZN"
+    bid: "180.00"
+    bidQty: 2
+    ask: "none"
+
+  - type: cancel
+    clOrdId: "BBO-M-C1"
+    origClOrdId: "BBO-M-S1"
+    symbol: "SPY"
+    side: SELL
+
+  - type: cancel
+    clOrdId: "BBO-M-C2"
+    origClOrdId: "BBO-M-B1"
+    symbol: "AMZN"
+    side: BUY

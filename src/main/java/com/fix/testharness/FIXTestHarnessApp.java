@@ -1,5 +1,6 @@
 package com.fix.testharness;
 
+import com.fix.testharness.marketdata.BboBook;
 import com.fix.testharness.report.ExecutionReporter;
 import com.fix.testharness.scenario.Scenario;
 import com.fix.testharness.scenario.ScenarioRunner;
@@ -31,6 +32,12 @@ public class FIXTestHarnessApp implements Application {
     private final Scenario       scenario;
     private final CountDownLatch completionLatch = new CountDownLatch(1);
     private final AtomicInteger  reportCounter   = new AtomicInteger(0);
+
+    /** Best bid and offer per symbol, built from the simulator's market data messages. */
+    private final BboBook        bbo             = new BboBook();
+
+    /** Failed checks (expect_* steps and incomplete runs). Main exits non-zero when this is above 0. */
+    private final AtomicInteger  failures        = new AtomicInteger(0);
 
     /**
      * Callback invoked for every incoming app message when set (used by {@link com.fix.testharness.perf.PerfTestRunner}).
@@ -125,6 +132,11 @@ public class FIXTestHarnessApp implements Application {
                 reportCounter.incrementAndGet();
             }
 
+            // Market data (W, X) and market data rejects (Y) feed the BBO book used by expect_* steps
+            if ("W".equals(msgType) || "X".equals(msgType) || "Y".equals(msgType)) {
+                bbo.apply(message);
+            }
+
             // Forward to perf-test runner if active
             Consumer<Message> cb = appMsgCallback.get();
             if (cb != null) {
@@ -153,6 +165,18 @@ public class FIXTestHarnessApp implements Application {
 
     /** When {@code true}, {@link ExecutionReporter} output is silenced (perf test mode). */
     public void setQuietMode(boolean quiet) { this.quietMode = quiet; }
+
+    /** The best bid and offer seen so far, per symbol. */
+    public BboBook bbo() { return bbo; }
+
+    /** Record a failed check. The message is logged, and Main exits non-zero at the end. */
+    public void recordFailure(String message) {
+        failures.incrementAndGet();
+        log.error("FAILED: {}", message);
+    }
+
+    /** Number of failed checks so far. */
+    public int failureCount() { return failures.get(); }
 
     /** Reset the raw ExecReport counter (call before each perf test). */
     public void resetReportCounter() { reportCounter.set(0); }

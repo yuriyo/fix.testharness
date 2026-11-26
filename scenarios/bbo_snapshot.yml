@@ -1,0 +1,98 @@
+name: "BBO snapshot"
+description: >
+  Top-of-book (BBO) snapshot per symbol with MarketDataRequest type 0.
+  Rests several buys and sells on GOOGL, checks the best bid and offer with their total quantities,
+  then cancels everything and checks the book is empty again.
+  Uses GOOGL so it does not share a book with the other scenarios.
+
+steps:
+  - type: new_order
+    clOrdId: "BBO-SNAP-B1"
+    symbol: "GOOGL"
+    side: BUY
+    ordType: LIMIT
+    qty: 100
+    price: 9.90
+    tif: GTC
+
+  # Same best bid level: quantities add up in the snapshot
+  - type: new_order
+    clOrdId: "BBO-SNAP-B2"
+    symbol: "GOOGL"
+    side: BUY
+    ordType: LIMIT
+    qty: 50
+    price: 9.90
+    tif: GTC
+
+  # Lower bid level: not part of the BBO
+  - type: new_order
+    clOrdId: "BBO-SNAP-B3"
+    symbol: "GOOGL"
+    side: BUY
+    ordType: LIMIT
+    qty: 10
+    price: 9.80
+    tif: GTC
+
+  - type: new_order
+    clOrdId: "BBO-SNAP-S1"
+    symbol: "GOOGL"
+    side: SELL
+    ordType: LIMIT
+    qty: 70
+    price: 10.10
+    tif: GTC
+
+  - type: wait
+    ms: 300
+
+  - type: market_data_request
+    mdReqId: "BBO-SNAP-1"
+    subscriptionType: snapshot
+    symbols: ["GOOGL"]
+
+  - type: expect_bbo
+    symbol: "GOOGL"
+    bid: "9.90"
+    bidQty: 150
+    ask: "10.10"
+    askQty: 70
+
+  # ── Clean up, then check the empty book ──────────────────────────────────
+  - type: cancel
+    clOrdId: "BBO-SNAP-C1"
+    origClOrdId: "BBO-SNAP-B1"
+    symbol: "GOOGL"
+    side: BUY
+
+  - type: cancel
+    clOrdId: "BBO-SNAP-C2"
+    origClOrdId: "BBO-SNAP-B2"
+    symbol: "GOOGL"
+    side: BUY
+
+  - type: cancel
+    clOrdId: "BBO-SNAP-C3"
+    origClOrdId: "BBO-SNAP-B3"
+    symbol: "GOOGL"
+    side: BUY
+
+  - type: cancel
+    clOrdId: "BBO-SNAP-C4"
+    origClOrdId: "BBO-SNAP-S1"
+    symbol: "GOOGL"
+    side: SELL
+
+  - type: wait
+    ms: 300
+
+  - type: market_data_request
+    mdReqId: "BBO-SNAP-2"
+    subscriptionType: snapshot
+    symbols: ["GOOGL"]
+
+  - type: expect_bbo
+    symbol: "GOOGL"
+    bid: "none"
+    ask: "none"

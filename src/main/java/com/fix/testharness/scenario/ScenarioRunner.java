@@ -1,6 +1,7 @@
 package com.fix.testharness.scenario;
 
 import com.fix.testharness.FIXTestHarnessApp;
+import com.fix.testharness.marketdata.BboBook;
 import com.fix.testharness.perf.PerfTestRunner;
 import com.fix.testharness.report.ExecutionReporter;
 import org.slf4j.Logger;
@@ -85,7 +86,9 @@ public class ScenarioRunner implements Runnable {
                 log.error("Scenario interrupted at step {}", i + 1);
                 break;
             } catch (Exception e) {
+                // A step that cannot run is a failed check, so the run fails instead of passing silently.
                 log.error("Step {}/{} failed: {}", i + 1, total, e.getMessage(), e);
+                app.recordFailure("step " + (i + 1) + "/" + total + " (" + step.getType() + "): " + e.getMessage());
             }
         }
 
@@ -111,8 +114,97 @@ public class ScenarioRunner implements Runnable {
             case "wait"              -> doWait(step);
             case "wait_for_reports"  -> waitForReports(step);
             case "perf_test"         -> new PerfTestRunner(app, sessionId, step).run();
+            case "market_data_request" -> sendMarketDataRequest(step);
+            case "expect_bbo"          -> expectBbo(step);
+            case "expect_md_reject"    -> expectMdReject(step);
             default -> log.warn("Unknown step type '{}' — skipping", step.getType());
         }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    //  Market data: MarketDataRequest (V) and checks on the BBO it returns
+    // ──────────────────────────────────────────────────────────────────────
+
+    private void sendMarketDataRequest(ScenarioStep s) throws SessionNotFound {
+        quickfix.fix42.MarketDataRequest m = new quickfix.fix42.MarketDataRequest();
+        m.set(new MDReqID(require(s.getMdReqId(), "mdReqId")));
+        m.set(new SubscriptionRequestType(parseSubscriptionType(s.getSubscriptionType())));
+        m.set(new MarketDepth(s.getMarketDepth()));
+
+        // NoMDEntryTypes (267) is required by FIX 4.2. Default to both sides.
+        List<String> types = (s.getEntryTypes() == null || s.getEntryTypes().isEmpty())
+                ? List.of("bid", "offer") : s.getEntryTypes();
+        for (String t : types) {
+            quickfix.fix42.MarketDataRequest.NoMDEntryTypes g = new quickfix.fix42.MarketDataRequest.NoMDEntryTypes();
+            g.set(new MDEntryType(parseEntryType(t)));
+            m.addGroup(g);
+        }
+
+        if (s.getSymbols() == null || s.getSymbols().isEmpty()) {
+            throw new IllegalArgumentException("market_data_request needs symbols");
+        }
+        for (String sym : s.getSymbols()) {
+            quickfix.fix42.MarketDataRequest.NoRelatedSym g = new quickfix.fix42.MarketDataRequest.NoRelatedSym();
+            g.set(new Symbol(sym));
+            m.addGroup(g);
+        }
+
+        log.info("► Market data request {} ({}) for {}", s.getMdReqId(), s.getSubscriptionType(), s.getSymbols());
+        Session.sendToTarget(m, sessionId);
+    }
+
+    /** expect_bbo: wait for the symbol's best bid and offer to match, then record a failure if they do not. */
+    private void expectBbo(ScenarioStep s) throws InterruptedException {
+        String symbol = require(s.getSymbols() != null && !s.getSymbols().isEmpty() ? s.getSymbols().get(0) : s.getSymbol(), "symbol");
+        BboBook.Expected expected = new BboBook.Expected(s.getBid(), s.getBidQty(), s.getAsk(), s.getAskQty());
+        int timeoutMs = s.getTimeoutMs() > 0 ? s.getTimeoutMs() : 5_000;
+
+        String mismatch = app.bbo().awaitTop(symbol, expected, timeoutMs);
+        if (mismatch == null) {
+            BboBook.Top top = app.bbo().top(symbol);
+            log.info("  ✔ BBO {}: bid {} / offer {}", symbol, describe(top.bid()), describe(top.ask()));
+        } else {
+            app.recordFailure("expect_bbo " + symbol + ": " + mismatch);
+        }
+    }
+
+    /** expect_md_reject: wait for MarketDataRequestReject (Y) messages with the given reason. */
+    private void expectMdReject(ScenarioStep s) throws InterruptedException {
+        String reason = require(s.getRejectReason(), "rejectReason");
+        int count = s.getCount() > 0 ? s.getCount() : 1;
+        int timeoutMs = s.getTimeoutMs() > 0 ? s.getTimeoutMs() : 5_000;
+
+        // Rejects are counted per reason over the whole run, so wait for the total, not for new ones.
+        if (app.bbo().awaitRejects(reason, count, timeoutMs)) {
+            log.info("  ✔ received {} reject(s) with reason {}", count, reason);
+        } else {
+            app.recordFailure("expect_md_reject: wanted " + count + " reject(s) with reason " + reason
+                    + ", got " + app.bbo().rejectCount(reason));
+        }
+    }
+
+    private static String describe(BboBook.Level level) {
+        return level == null ? "none" : level.price().toPlainString() + " x " + level.qty();
+    }
+
+    private static char parseSubscriptionType(String s) {
+        if (s == null) throw new IllegalArgumentException("subscriptionType is required (snapshot | subscribe | unsubscribe)");
+        return switch (s.toLowerCase()) {
+            case "snapshot"    -> '0';
+            case "subscribe"   -> '1';
+            case "unsubscribe" -> '2';
+            default -> throw new IllegalArgumentException("unknown subscriptionType: " + s);
+        };
+    }
+
+    private static char parseEntryType(String s) {
+        return switch (s.toLowerCase()) {
+            case "bid"   -> '0';
+            case "offer" -> '1';
+            // Trade entries are not supported by the simulator. Sent on purpose in negative tests.
+            case "trade" -> '2';
+            default -> throw new IllegalArgumentException("unknown entry type: " + s + " (bid | offer | trade)");
+        };
     }
 
     // ──────────────────────────────────────────────────────────────────────
