@@ -2,7 +2,9 @@ package com.fix.testharness.report;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import quickfix.FieldMap;
 import quickfix.FieldNotFound;
+import quickfix.Group;
 import quickfix.Message;
 import quickfix.SessionID;
 import quickfix.field.*;
@@ -43,6 +45,9 @@ public class ExecutionReporter {
                 case "8" -> reportExecutionReport(message, sessionId);
                 case "9" -> reportCancelReject(message, sessionId);
                 case "b" -> reportQuoteAck(message, sessionId);
+                case "W" -> reportMarketDataSnapshot(message);
+                case "X" -> reportMarketDataIncremental(message);
+                case "Y" -> reportMarketDataReject(message);
                 default  -> log.debug("<< [{}] MsgType={} (raw)", sessionId.getSenderCompID(), msgType);
             }
         } catch (FieldNotFound e) {
@@ -95,6 +100,57 @@ public class ExecutionReporter {
     //  OrderCancelReject (9)
     // ──────────────────────────────────────────────────────────────────────
 
+    // ──────────────────────────────────────────────────────────────────────
+    //  Market data: snapshot (W), incremental (X), reject (Y)
+    // ──────────────────────────────────────────────────────────────────────
+
+    private static void reportMarketDataSnapshot(Message msg) throws FieldNotFound {
+        String reqId  = safeStr(msg, MDReqID.FIELD);
+        String symbol = safeStr(msg, Symbol.FIELD);
+        StringBuilder sb = new StringBuilder();
+        int n = msg.getGroupCount(268);
+        for (int i = 1; i <= n; i++) {
+            Group g = msg.getGroup(i, new quickfix.fix42.MarketDataSnapshotFullRefresh.NoMDEntries());
+            sb.append("  ").append(sideLabel(g.getChar(MDEntryType.FIELD)))
+              .append(' ').append(safeStr(g, MDEntryPx.FIELD))
+              .append(" x ").append((long) safeDouble(g, MDEntrySize.FIELD));
+        }
+        log.info("<< MarketDataSnapshot  reqId={} symbol={}{}", reqId, symbol, n == 0 ? "  (empty book)" : sb.toString());
+    }
+
+    private static void reportMarketDataIncremental(Message msg) throws FieldNotFound {
+        String reqId = safeStr(msg, MDReqID.FIELD);
+        int n = msg.getGroupCount(268);
+        for (int i = 1; i <= n; i++) {
+            Group g = msg.getGroup(i, new quickfix.fix42.MarketDataIncrementalRefresh.NoMDEntries());
+            char action = g.getChar(MDUpdateAction.FIELD);
+            String side = sideLabel(g.getChar(MDEntryType.FIELD));
+            String symbol = safeStr(g, Symbol.FIELD);
+            if (action == MDUpdateAction.DELETE) {
+                log.info("<< MarketDataUpdate    reqId={} symbol={} {} removed", reqId, symbol, side);
+            } else {
+                log.info("<< MarketDataUpdate    reqId={} symbol={} {} {} x {}", reqId, symbol, side,
+                         safeStr(g, MDEntryPx.FIELD), (long) safeDouble(g, MDEntrySize.FIELD));
+            }
+        }
+    }
+
+    private static void reportMarketDataReject(Message msg) throws FieldNotFound {
+        String reqId = safeStr(msg, MDReqID.FIELD);
+        String reason = safeStr(msg, MDReqRejReason.FIELD);
+        String text = safeStr(msg, Text.FIELD);
+        log.warn("<< MarketDataRequestReject  reqId={} reason={} {}", reqId, reason, text);
+    }
+
+    private static String sideLabel(char t) {
+        return switch (t) {
+            case '0' -> "BID  ";
+            case '1' -> "OFFER";
+            case '2' -> "TRADE";
+            default  -> "?" + t;
+        };
+    }
+
     private static void reportCancelReject(Message msg, SessionID sid) throws FieldNotFound {
         String clOrdId     = safeStr(msg, ClOrdID.FIELD);
         String origClOrdId = safeStr(msg, OrigClOrdID.FIELD);
@@ -130,11 +186,11 @@ public class ExecutionReporter {
     //  Helpers
     // ──────────────────────────────────────────────────────────────────────
 
-    private static String safeStr(Message msg, int tag) {
+    private static String safeStr(FieldMap msg, int tag) {
         try { return msg.getString(tag); } catch (FieldNotFound e) { return ""; }
     }
 
-    private static double safeDouble(Message msg, int tag) {
+    private static double safeDouble(FieldMap msg, int tag) {
         try { return msg.getDouble(tag); } catch (FieldNotFound e) { return 0.0; }
     }
 
