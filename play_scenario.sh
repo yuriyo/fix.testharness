@@ -103,12 +103,14 @@ fi
 
 # ── Resolve FIX server hostname for --add-host ────────────────────────────
 # Docker build VMs / containers may not inherit the host's VPN/custom DNS.
-# Extract SocketConnectHost from the effective config and resolve it on the host.
+# Extract SocketConnectHost from the effective config and resolve it inside the image.
+# No host DNS tools are needed: getent in the container uses the same resolver the client uses.
 _EXTRA_HOST_ARGS=()
 
 _fix_host="$(grep '^SocketConnectHost=' "${CLEANUP_CONFIG:-$CONFIG}" | cut -d= -f2 | tr -d '[:space:]')"
 if [[ -n "$_fix_host" ]]; then
-    _fix_ip="$(python3 -c "import socket; print(socket.gethostbyname('$_fix_host'))" 2>/dev/null || true)"
+    # IPv4 only: the FIX session connects over IPv4 and an IPv6 entry would break the connection.
+    _fix_ip="$(docker run --rm --entrypoint getent "$IMAGE_TAG" ahostsv4 "$_fix_host" 2>/dev/null | awk 'NR==1{print $1}' || true)"
     if [[ -n "$_fix_ip" && "$_fix_ip" != "$_fix_host" ]]; then
         echo "[INFO] Host resolution: ${_fix_host} -> ${_fix_ip} (--add-host)"
         _EXTRA_HOST_ARGS=(--add-host "${_fix_host}:${_fix_ip}")

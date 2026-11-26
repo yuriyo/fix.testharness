@@ -10,11 +10,16 @@
 #
 # QuickFIX/J FileStore format: Java DataOutputStream.writeUTF
 #   2-byte big-endian length prefix followed by ASCII digits.
+#
+# The files are written by a shell script running inside the fix-testharness image.
+# Only Docker is needed on the host.
 
 set -euo pipefail
 
-STORE_DIR="$(cd "$(dirname "$0")" && pwd)/store"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+STORE_DIR="$SCRIPT_DIR/store"
 SESSION="FIX.4.2-YOYO-SIM"
+IMAGE_TAG="${IMAGE_TAG:-fix-testharness:latest}"
 
 if [[ $# -eq 0 ]]; then
     PROXY_LOCAL=1
@@ -28,33 +33,55 @@ else
     exit 1
 fi
 
-python3 - <<PYEOF
-import struct, os, sys
+for v in "$PROXY_LOCAL" "$PROXY_REMOTE"; do
+    if [[ ! "$v" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: sequence numbers must be whole numbers, got: $v" >&2
+        exit 1
+    fi
+done
 
-store = '${STORE_DIR}'
-session = '${SESSION}'
+if ! docker image inspect "$IMAGE_TAG" &>/dev/null; then
+    echo "ERROR: image $IMAGE_TAG not found. Run ./build.sh first." >&2
+    exit 1
+fi
 
-def write_java_utf(path, n):
-    s = str(n)
-    b = s.encode('utf-8')
-    with open(path, 'wb') as f:
-        f.write(struct.pack('>H', len(b)))
-        f.write(b)
+mkdir -p "$STORE_DIR"
 
-sender = int('${PROXY_LOCAL}')
-target = int('${PROXY_REMOTE}')
+# The script below runs inside the container as POSIX sh (stdin), with the session,
+# sender and target sequence numbers as arguments.
+docker run --rm -i \
+    --user "$(id -u):$(id -g)" \
+    --entrypoint sh \
+    -v "$STORE_DIR:/store" \
+    "$IMAGE_TAG" -s "$SESSION" "$PROXY_LOCAL" "$PROXY_REMOTE" <<'SH'
+set -eu
+session="$1"
+sender="$2"
+target="$3"
+store=/store
 
-# Wipe body/header index files — they reference old seqnums and will
-# cause QuickFIX/J to attempt gap fills for stale ranges.
-for ext in ('body', 'header'):
-    p = f'{store}/{session}.{ext}'
-    if os.path.exists(p):
-        open(p, 'wb').close()
+# QuickFIX/J writeUTF: a 2-byte big-endian length, then the ASCII digits.
+# The length is at most 255 here, so the high byte is always 0.
+write_utf() {
+    {
+        printf '\000'
+        printf "\\$(printf '%03o' "${#2}")"
+        printf '%s' "$2"
+    } > "$1"
+}
 
-write_java_utf(f'{store}/{session}.senderseqnums', sender)
-write_java_utf(f'{store}/{session}.targetseqnums', target)
+# Wipe body/header index files: they reference old seqnums and would make
+# QuickFIX/J attempt gap fills for stale ranges.
+for ext in body header; do
+    if [ -e "$store/$session.$ext" ]; then
+        : > "$store/$session.$ext"
+    fi
+done
 
-print(f'[sync_seqnums] senderseqnums = {sender}')
-print(f'[sync_seqnums] targetseqnums = {target}')
-print(f'[sync_seqnums] body/header index cleared')
-PYEOF
+write_utf "$store/$session.senderseqnums" "$sender"
+write_utf "$store/$session.targetseqnums" "$target"
+
+echo "[sync_seqnums] senderseqnums = $sender"
+echo "[sync_seqnums] targetseqnums = $target"
+echo "[sync_seqnums] body/header index cleared"
+SH

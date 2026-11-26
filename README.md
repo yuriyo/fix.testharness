@@ -1,23 +1,30 @@
 # FIX Test Harness
 
-A FIX 4.4 client test harness that connects to the `fix-simulator` (or any compatible FIX 4.4 acceptor), maintains the session with heartbeats, and plays back YAML-driven scenario files.
+A FIX 4.2 client test harness that connects to the `fix-simulator` (or any compatible FIX 4.2 acceptor), maintains the session with heartbeats, and plays back YAML-driven scenario files.
+
+**Docker is the only requirement.** The Java build, the Maven build and the scenario runs all happen in containers. Nothing needs to be installed on the host besides Docker.
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Make sure the FIX simulator is running on localhost:9876
+# 1. Make sure the FIX simulator is running (port 9876 on the host)
 
-# 2. Build the fat-jar
-chmod +x build.sh && ./build.sh
+# 2. Build the image. Maven runs inside the container.
+./build.sh
 
-# 3. Run the default scenario (order_flow.yml)
-java -jar target/fix-testharness-1.0.0-SNAPSHOT.jar
+# 3. Run the scenarios. With no arguments, all non-perf scenarios run in order.
+./play_scenario.sh --host host.docker.internal --port 9876 order_flow
 
-# 4. Run a specific scenario
-java -jar target/fix-testharness-1.0.0-SNAPSHOT.jar config/client.cfg scenarios/quote_flow.yml
+# 4. Run a specific scenario with a specific config
+./play_scenario.sh --config config/client.cfg scenarios/quote_flow.yml
+
+# List the scenarios
+./play_scenario.sh --list
 ```
+
+`--host` and `--port` override `SocketConnectHost` and `SocketConnectPort` for one run. Use `host.docker.internal` to reach a simulator running on your machine from inside the container.
 
 ---
 
@@ -36,6 +43,8 @@ java -jar target/fix-testharness-1.0.0-SNAPSHOT.jar config/client.cfg scenarios/
 
 ### Environment variable overrides
 
+These are read by the container. `play_scenario.sh` does not forward them; use `--host` and `--port` instead. To set them yourself, run the image directly:
+
 | Variable | Description |
 |----------|-------------|
 | `FIX_HOST` | Override `SocketConnectHost` |
@@ -43,7 +52,10 @@ java -jar target/fix-testharness-1.0.0-SNAPSHOT.jar config/client.cfg scenarios/
 | `FIX_TIMEOUT` | Scenario completion timeout in seconds (default `120`) |
 
 ```bash
-FIX_HOST=10.0.0.5 FIX_PORT=9876 FIX_TIMEOUT=60 java -jar target/fix-testharness-*.jar
+docker run --rm -e FIX_HOST=host.docker.internal -e FIX_PORT=9876 -e FIX_TIMEOUT=60 \
+  --add-host=host.docker.internal:host-gateway \
+  -v "$PWD/config:/app/config:ro" -v "$PWD/scenarios:/app/scenarios:ro" \
+  fix-testharness:latest /app/config/client.cfg /app/scenarios/order_flow.yml
 ```
 
 ---
@@ -202,7 +214,7 @@ fix.testharness/
 | Library | Version | Purpose |
 |---------|---------|---------|
 | `quickfixj-core` | 2.3.1 | FIX protocol engine |
-| `quickfixj-messages-fix44` | 2.3.1 | FIX 4.4 message types & dictionary |
+| `quickfixj-messages-fix42` | 2.3.1 | FIX 4.2 message types & dictionary |
 | `snakeyaml` | 2.2 | YAML scenario parsing |
 | `logback-classic` | 1.4.14 | Logging |
 
@@ -213,7 +225,7 @@ fix.testharness/
 1. Create `scenarios/my_scenario.yml` following the format above.
 2. Run:
    ```bash
-   java -jar target/fix-testharness-*.jar config/client.cfg scenarios/my_scenario.yml
+   ./play_scenario.sh --host host.docker.internal --port 9876 my_scenario
    ```
 
 All logs are written to both the console and `logs/testharness.log`.
