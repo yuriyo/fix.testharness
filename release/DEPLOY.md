@@ -38,7 +38,7 @@ tar -xzf ../fixtestharness-<version>-tools.tar.gz       # creates play_scenario.
 chmod +x play_scenario.sh sync_seqnums.sh
 ```
 
-Edit `config/client.cfg` for your session. The key settings:
+Edit `config/client.cfg` for your session. **Set `TargetCompID=EXCHANGE`** when you test against the FIX Exchange Simulator. The shipped file has another server name, so the logon will not complete until you change it. The key settings:
 
 | Setting | Meaning |
 |---------|---------|
@@ -46,7 +46,7 @@ Edit `config/client.cfg` for your session. The key settings:
 | `TargetCompID` | the server's name, for example `EXCHANGE` for the simulator |
 | `SocketConnectHost` / `SocketConnectPort` | the server (for example port `9876`) |
 | `BeginString` | `FIX.4.2` |
-| `ResetOnLogon` | `Y` resets the sequence numbers at each logon |
+| `ResetOnLogon` | `Y` asks for a reset at each logon. The server must allow it too; the simulator keeps its own numbers (see "Reset sequence numbers" below). |
 
 You can change the host and port per run with `--host` and `--port` (below), so the file can stay as it is.
 
@@ -112,7 +112,7 @@ Logs are kept in `logs/`. Each session has `FIX.4.2-<sender>-<target>.messages.l
 
 ## 6. Reset sequence numbers
 
-If the client and the server disagree about sequence numbers (`MsgSeqNum too low`, or messages that never get replies), reset the client's stored sequence numbers:
+If the client and the server disagree about sequence numbers (`MsgSeqNum too low`, or messages that never get replies), reset both sides. The simulator keeps its own numbers in `fix-store`, and `ResetOnLogon=Y` on the client does not change them. Reset the simulator's session first (see the simulator guide, "Reset a session"), then reset the client's stored numbers:
 
 ```bash
 ./sync_seqnums.sh          # reset both to 1
