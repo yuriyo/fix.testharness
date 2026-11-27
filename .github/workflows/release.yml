@@ -40,19 +40,28 @@ jobs:
             exit 1
           fi
 
-      - name: Build the image
-        run: ./build.sh --tag "fix-testharness:${{ steps.version.outputs.version }}"
+      - name: Log in to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
 
-      - name: Package the image, the jar and the scenarios
+      - name: Build and push the image to Docker Hub
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          ./build.sh --tag "tradeeze/fixtestharness:${v}"
+          docker push "tradeeze/fixtestharness:${v}"
+
+      - name: Package the image tarball, the jar, the scenarios and the tools
         run: |
           v="${{ steps.version.outputs.version }}"
           mkdir -p dist
-          docker save "fix-testharness:${v}" | gzip > "dist/fix-testharness-${v}.image.tar.gz"
-          cid=$(docker create "fix-testharness:${v}")
-          docker cp "${cid}:/app/app.jar" "dist/fix-testharness-${v}.jar"
+          docker save "tradeeze/fixtestharness:${v}" | gzip > "dist/fixtestharness-${v}.image.tar.gz"
+          cid=$(docker create "tradeeze/fixtestharness:${v}")
+          docker cp "${cid}:/app/app.jar" "dist/fixtestharness-${v}.jar"
           docker rm "$cid" >/dev/null
-          tar -czf "dist/fix-testharness-${v}-scenarios.tar.gz" scenarios config
-          tar -czf "dist/fix-testharness-${v}-tools.tar.gz" play_scenario.sh sync_seqnums.sh
+          tar -czf "dist/fixtestharness-${v}-scenarios.tar.gz" scenarios config
+          tar -czf "dist/fixtestharness-${v}-tools.tar.gz" play_scenario.sh sync_seqnums.sh
           cp release/DEPLOY.md dist/DEPLOY.md
           (cd dist && sha256sum * > SHA256SUMS)
 

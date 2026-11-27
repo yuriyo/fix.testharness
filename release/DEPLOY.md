@@ -6,10 +6,11 @@ The test harness is a FIX client. It logs on to a FIX 4.2 server (for example th
 
 | File | What it is |
 |------|-----------|
-| `fix-testharness-<version>.image.tar.gz` | The Docker image, ready to load with `docker load` |
-| `fix-testharness-<version>.jar` | The client as one runnable jar (the image already contains it) |
-| `fix-testharness-<version>-scenarios.tar.gz` | `config/` (client settings) and `scenarios/` (the YAML scenarios) |
-| `fix-testharness-<version>-tools.tar.gz` | `play_scenario.sh` (run scenarios) and `sync_seqnums.sh` (reset sequence numbers) |
+| Docker Hub `tradeeze/fixtestharness:<version>` | The Docker image. Pull it with `docker pull`. |
+| `fixtestharness-<version>.image.tar.gz` | The same image as a file, for machines without Internet access. Load it with `docker load`. |
+| `fixtestharness-<version>.jar` | The client as one runnable jar (the image already contains it) |
+| `fixtestharness-<version>-scenarios.tar.gz` | `config/` (client settings) and `scenarios/` (the YAML scenarios) |
+| `fixtestharness-<version>-tools.tar.gz` | `play_scenario.sh` (run scenarios) and `sync_seqnums.sh` (reset sequence numbers) |
 | `DEPLOY.md` | This guide |
 | `SHA256SUMS` | Checksums of every file above |
 
@@ -19,21 +20,28 @@ Check the downloads before you load them:
 sha256sum -c SHA256SUMS
 ```
 
-## 1. Load the image
+## 1. Get the image
+
+From Docker Hub (needs Internet access):
 
 ```bash
-docker load -i fix-testharness-<version>.image.tar.gz
-docker image ls fix-testharness
+docker pull tradeeze/fixtestharness:<version>
 ```
 
-The image is `fix-testharness:<version>`.
+Or, from the release file, on a machine without Internet access:
+
+```bash
+docker load -i fixtestharness-<version>.image.tar.gz
+```
+
+Both give the image `tradeeze/fixtestharness:<version>`. Use that name below.
 
 ## 2. Set up a working folder
 
 ```bash
 mkdir -p harness && cd harness
-tar -xzf ../fix-testharness-<version>-scenarios.tar.gz   # creates ./config and ./scenarios
-tar -xzf ../fix-testharness-<version>-tools.tar.gz       # creates play_scenario.sh and sync_seqnums.sh
+tar -xzf ../fixtestharness-<version>-scenarios.tar.gz   # creates ./config and ./scenarios
+tar -xzf ../fixtestharness-<version>-tools.tar.gz       # creates play_scenario.sh and sync_seqnums.sh
 chmod +x play_scenario.sh sync_seqnums.sh
 ```
 
@@ -66,12 +74,12 @@ Use `host.docker.internal` to reach a server on the same machine. For a server o
 | `--config <file>` | another client settings file (it must be inside the folder, so the container can read it) |
 | `--host`, `--port` | server address for this run |
 | `--rate <n>` | average message rate for the scenario, in messages per second. Wait steps are not limited. Default: no limit. |
-| `--tag <tag>` | image tag (default `fix-testharness:latest`; use `fix-testharness:<version>`) |
+| `--tag <tag>` | image tag (default `tradeeze/fixtestharness:latest`; use `tradeeze/fixtestharness:<version>`) |
 
 Set the image tag once for the folder:
 
 ```bash
-export IMAGE_TAG=fix-testharness:<version>
+export IMAGE_TAG=tradeeze/fixtestharness:<version>
 ```
 
 `play_scenario.sh` exits 0 when every scenario passes, and 1 if any scenario fails. A check that fails (for example, an `expect_bbo` that does not match), a step that cannot run, or a run that does not finish in time all count as failures.
@@ -89,7 +97,7 @@ docker run --rm \
   -v "$(pwd)/scenarios:/app/scenarios:ro" \
   -v "$(pwd)/store:/app/store" \
   -v "$(pwd)/logs:/app/logs" \
-  fix-testharness:<version> \
+  tradeeze/fixtestharness:<version> \
   /app/config/client.cfg /app/scenarios/order_flow.yml
 ```
 
@@ -137,8 +145,8 @@ tar -czf harness-backup.tgz config scenarios store logs
 ## 8. Upgrade to a new release
 
 ```bash
-docker load -i fix-testharness-<new-version>.image.tar.gz
-export IMAGE_TAG=fix-testharness:<new-version>
+docker pull tradeeze/fixtestharness:<new-version>
+export IMAGE_TAG=tradeeze/fixtestharness:<new-version>
 ```
 
 Then run as before. The release's `config/` and `scenarios/` may differ from yours, so compare them before you replace yours.
@@ -147,7 +155,7 @@ Then run as before. The release's `config/` and `scenarios/` may differ from you
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `image ... not found` | the image is not loaded, or the tag is wrong | `docker load` it and check `IMAGE_TAG` |
+| `image ... not found` | the image is not pulled or loaded, or the tag is wrong | `docker pull` it (or `docker load`) and check `IMAGE_TAG` |
 | `Logon` never happens, scenario times out | wrong host, port, or `TargetCompID` | check `--host`, `--port`, and `TargetCompID` in `config/client.cfg` |
 | `MsgSeqNum too low` | sequence numbers out of step | `./sync_seqnums.sh`, or reset the server's session |
 | `Unknown entry type` or `Step N/M ... failed` | a bad value in the scenario | fix the YAML value, the message names the step |
