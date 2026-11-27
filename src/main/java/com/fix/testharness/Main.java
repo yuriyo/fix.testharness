@@ -77,6 +77,14 @@ public class Main {
 
         // ── Build QuickFIX/J components ──────────────────────────────────
         FIXTestHarnessApp app      = new FIXTestHarnessApp(scenario);
+        // Optional average message rate for scenario steps (SCENARIO_RATE, messages per second).
+        String rateEnv = System.getenv("SCENARIO_RATE");
+        if (rateEnv != null && !rateEnv.isBlank()) {
+            double rate = Double.parseDouble(rateEnv.trim());
+            if (rate <= 0) throw new IllegalArgumentException("SCENARIO_RATE must be positive: " + rateEnv);
+            app.setScenarioMessageRate(rate);
+            log.info("Scenario message rate: {} messages/s on average (waits are not limited)", rate);
+        }
         MessageStoreFactory store  = new FileStoreFactory(settings);
         LogFactory logFactory      = new FileLogFactory(settings);
         MessageFactory msgFactory  = new DefaultMessageFactory();

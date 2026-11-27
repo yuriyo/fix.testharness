@@ -15,6 +15,10 @@
 #   --host   <host>   Override SocketConnectHost
 #   --port   <port>   Override SocketConnectPort
 #   --tag    <tag>    Docker image tag (default: fix-testharness:latest)
+#   --rate   <n>      Average message rate for scenario steps, in messages/s.
+#                     Applies to steps that send messages (new_order, cancel, replace,
+#                     quote, mass_quote, market_data_request). Wait steps are not limited.
+#                     Default: no limit.
 #   --list            List available scenarios and exit
 #   --help            Show this help and exit
 #
@@ -31,6 +35,7 @@ IMAGE_TAG="${IMAGE_TAG:-fix-testharness:latest}"
 CONFIG="config/client.cfg"
 OPT_HOST=""
 OPT_PORT=""
+SCENARIO_RATE=""   # average message rate in messages/s; empty = no limit
 SCENARIOS=()
 
 # ── Parse arguments ───────────────────────────────────────────────────────
@@ -56,6 +61,7 @@ while [[ $# -gt 0 ]]; do
         --host)       OPT_HOST="$2"; shift 2 ;;
         --port)       OPT_PORT="$2"; shift 2 ;;
         --tag)        IMAGE_TAG="$2"; shift 2 ;;
+        --rate)       SCENARIO_RATE="$2"; shift 2 ;;
         --*)          echo "ERROR: unknown option: $1" >&2; exit 1 ;;
         *)
             arg="$1"
@@ -67,6 +73,14 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# ── Validate the message rate ────────────────────────────────────────────
+if [[ -n "$SCENARIO_RATE" ]]; then
+    if [[ ! "$SCENARIO_RATE" =~ ^[0-9]+([.][0-9]+)?$ ]] || [[ "$SCENARIO_RATE" == "0" ]] || [[ "$SCENARIO_RATE" == "0.0" ]]; then
+        echo "ERROR: --rate must be a positive number of messages per second, got: $SCENARIO_RATE" >&2
+        exit 1
+    fi
+fi
 
 # ── Default: all non-perf scenarios ────────────────────────────────────────
 if [[ ${#SCENARIOS[@]} -eq 0 ]]; then
@@ -139,6 +153,7 @@ for SCENARIO in "${SCENARIOS[@]}"; do
             -v "$SCRIPT_DIR/scenarios:/app/scenarios:ro" \
             -v "$SCRIPT_DIR/store:/app/store" \
             -v "$SCRIPT_DIR/logs:/app/logs" \
+            -e "SCENARIO_RATE=$SCENARIO_RATE" \
             "${_EXTRA_HOST_ARGS[@]}" \
             "$IMAGE_TAG" \
             "$CONTAINER_CONFIG" "$SCENARIO"; then

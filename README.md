@@ -50,6 +50,11 @@ These are read by the container. `play_scenario.sh` does not forward them; use `
 | `FIX_HOST` | Override `SocketConnectHost` |
 | `FIX_PORT` | Override `SocketConnectPort` |
 | `FIX_TIMEOUT` | Scenario completion timeout in seconds (default `120`) |
+| `SCENARIO_RATE` | Average message rate for scenario steps, in messages per second. `play_scenario.sh --rate <n>` sets it. |
+
+### Message rate
+
+`./play_scenario.sh --rate 500 <scenario>` limits the average rate at which a scenario sends FIX messages to 500 per second. The limit applies to the steps that send messages: `new_order`, `cancel`, `replace`, `quote`, `mass_quote` and `market_data_request`. Wait steps keep their own `ms` delays and are not limited, and `perf_test` keeps its own rate control (`rate`). If sending falls behind, the schedule catches up so the average stays at the target. After a pause longer than a second it does not send a burst.
 
 ```bash
 docker run --rm -e FIX_HOST=host.docker.internal -e FIX_PORT=9876 -e FIX_TIMEOUT=60 \

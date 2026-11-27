@@ -36,6 +36,9 @@ public class FIXTestHarnessApp implements Application {
     /** Best bid and offer per symbol, built from the simulator's market data messages. */
     private final BboBook        bbo             = new BboBook();
 
+    /** Average FIX message rate for scenario steps, in messages per second. 0 means no limit. */
+    private volatile double scenarioMessageRate = 0;
+
     /** Failed checks (expect_* steps and incomplete runs). Main exits non-zero when this is above 0. */
     private final AtomicInteger  failures        = new AtomicInteger(0);
 
@@ -79,6 +82,7 @@ public class FIXTestHarnessApp implements Application {
 
         ScenarioRunner runner = new ScenarioRunner(
                 scenario, sessionId, completionLatch, reportCounter, this);
+        runner.setMessageRate(scenarioMessageRate);
 
         Thread t = new Thread(runner, "scenario-runner");
         t.setDaemon(true);
@@ -165,6 +169,14 @@ public class FIXTestHarnessApp implements Application {
 
     /** When {@code true}, {@link ExecutionReporter} output is silenced (perf test mode). */
     public void setQuietMode(boolean quiet) { this.quietMode = quiet; }
+
+    /**
+     * Set the average rate of FIX messages sent by scenario steps. Applies to steps that send
+     * messages, not to wait steps or performance tests. Call before logon.
+     *
+     * @param messagesPerSecond rate; 0 or less means no limit
+     */
+    public void setScenarioMessageRate(double messagesPerSecond) { this.scenarioMessageRate = messagesPerSecond; }
 
     /** The best bid and offer seen so far, per symbol. */
     public BboBook bbo() { return bbo; }

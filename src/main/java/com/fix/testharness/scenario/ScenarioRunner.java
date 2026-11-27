@@ -40,6 +40,22 @@ public class ScenarioRunner implements Runnable {
      */
     private final AtomicInteger reportCounter;
 
+    /** Step types that send FIX messages. These are the only steps the message rate limits. */
+    private static final java.util.Set<String> SENDING_STEPS = java.util.Set.of(
+            "new_order", "cancel", "replace", "quote", "mass_quote", "market_data_request");
+
+    /** Optional average message rate for this scenario. Null means no limit. */
+    private MessageRateLimiter rateLimiter;
+
+    /**
+     * Limit the average rate of FIX messages sent by this scenario's steps.
+     *
+     * @param messagesPerSecond target rate, or 0 or less for no limit
+     */
+    public void setMessageRate(double messagesPerSecond) {
+        this.rateLimiter = messagesPerSecond > 0 ? new MessageRateLimiter(messagesPerSecond) : null;
+    }
+
     public ScenarioRunner(Scenario scenario,
                           SessionID sessionId,
                           CountDownLatch completionLatch,
@@ -105,6 +121,10 @@ public class ScenarioRunner implements Runnable {
 
     private void executeStep(ScenarioStep step)
             throws SessionNotFound, InterruptedException {
+        // Message rate applies to steps that send FIX messages only. Wait steps are not limited.
+        if (rateLimiter != null && SENDING_STEPS.contains(step.getType().toLowerCase())) {
+            rateLimiter.acquire();
+        }
         switch (step.getType().toLowerCase()) {
             case "new_order"         -> sendNewOrder(step);
             case "cancel"            -> sendCancel(step);
