@@ -52,6 +52,8 @@ jobs:
           docker cp "${cid}:/app/app.jar" "dist/fix-testharness-${v}.jar"
           docker rm "$cid" >/dev/null
           tar -czf "dist/fix-testharness-${v}-scenarios.tar.gz" scenarios config
+          tar -czf "dist/fix-testharness-${v}-tools.tar.gz" play_scenario.sh sync_seqnums.sh
+          cp release/DEPLOY.md dist/DEPLOY.md
           (cd dist && sha256sum * > SHA256SUMS)
 
       - name: Create the GitHub release
@@ -60,5 +62,5 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" dist/* \
             --title "FIX test harness ${{ steps.version.outputs.version }}" \
-            --generate-notes \
+            --notes-file release/DEPLOY.md \
             --verify-tag
