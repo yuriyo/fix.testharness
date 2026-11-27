@@ -7,7 +7,6 @@ The test harness is a FIX client. It logs on to a FIX 4.2 server (for example th
 | File | What it is |
 |------|-----------|
 | Docker Hub `tradeeze/fixtestharness:<version>` | The Docker image. Pull it with `docker pull`. |
-| `fixtestharness-<version>.image.tar.gz` | The same image as a file, for machines without Internet access. Load it with `docker load`. |
 | `fixtestharness-<version>.jar` | The client as one runnable jar (the image already contains it) |
 | `fixtestharness-<version>-scenarios.tar.gz` | `config/` (client settings) and `scenarios/` (the YAML scenarios) |
 | `fixtestharness-<version>-tools.tar.gz` | `play_scenario.sh` (run scenarios) and `sync_seqnums.sh` (reset sequence numbers) |
@@ -28,13 +27,7 @@ From Docker Hub (needs Internet access):
 docker pull tradeeze/fixtestharness:<version>
 ```
 
-Or, from the release file, on a machine without Internet access:
-
-```bash
-docker load -i fixtestharness-<version>.image.tar.gz
-```
-
-Both give the image `tradeeze/fixtestharness:<version>`. Use that name below.
+The image is `tradeeze/fixtestharness:<version>`. Use that name below. The image is built for `linux/amd64`. On an Apple Silicon Mac, add `--platform linux/amd64` to `docker pull` and `docker run`.
 
 ## 2. Set up a working folder
 

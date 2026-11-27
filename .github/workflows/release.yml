@@ -2,8 +2,8 @@
 #
 # Example: git tag testharness-r1.2.3 && git push origin testharness-r1.2.3
 #
-# The tag must point to a commit that is on main. The release holds the image as a tarball,
-# the fat jar, and the scenarios.
+# The tag must point to a commit that is on main. The image is pushed to Docker Hub
+# (tradeeze/fixtestharness). The release holds the fat jar, the scenarios and the tools.
 name: Release testharness
 
 on:
@@ -52,11 +52,10 @@ jobs:
           ./build.sh --tag "tradeeze/fixtestharness:${v}"
           docker push "tradeeze/fixtestharness:${v}"
 
-      - name: Package the image tarball, the jar, the scenarios and the tools
+      - name: Package the jar, the scenarios and the tools
         run: |
           v="${{ steps.version.outputs.version }}"
           mkdir -p dist
-          docker save "tradeeze/fixtestharness:${v}" | gzip > "dist/fixtestharness-${v}.image.tar.gz"
           cid=$(docker create "tradeeze/fixtestharness:${v}")
           docker cp "${cid}:/app/app.jar" "dist/fixtestharness-${v}.jar"
           docker rm "$cid" >/dev/null
