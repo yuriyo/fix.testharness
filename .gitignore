@@ -6,3 +6,6 @@ logs/
 .idea/
 .DS_Store
 dependency-reduced-pom.xml
+
+# Personal Claude Code settings for this project
+.claude/settings.local.json
