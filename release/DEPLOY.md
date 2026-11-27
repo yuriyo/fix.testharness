@@ -148,7 +148,7 @@ Then run as before. The release's `config/` and `scenarios/` may differ from you
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `image ... not found` | the image is not pulled or loaded, or the tag is wrong | `docker pull` it (or `docker load`) and check `IMAGE_TAG` |
+| `image ... not found` | the image is not pulled or loaded, or the tag is wrong | `docker pull` it and check `IMAGE_TAG` |
 | `Logon` never happens, scenario times out | wrong host, port, or `TargetCompID` | check `--host`, `--port`, and `TargetCompID` in `config/client.cfg` |
 | `MsgSeqNum too low` | sequence numbers out of step | `./sync_seqnums.sh`, or reset the server's session |
 | `Unknown entry type` or `Step N/M ... failed` | a bad value in the scenario | fix the YAML value, the message names the step |
